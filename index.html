@@ -3,10 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>고대신문 디지털 지식 아카이브 | Korea University Newspaper Archive</title>
+<title>HOGraph (호그래프) | 고대신문 시맨틱 지식 그래프 & 아카이브 플랫폼</title>
 <!-- Tailwind CSS via CDN -->
 <script src="https://cdn.tailwindcss.com"></script>
+<!-- FontAwesome Icons -->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<!-- Vis.js Network for Interactive Knowledge Graph -->
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <script>
   tailwind.config = {
     theme: {
@@ -31,660 +34,1322 @@
 <style>
   @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
   body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
+  
+  .scrollbar-custom::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-custom::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Graph Canvas */
+  #network-canvas {
+    width: 100%;
+    height: 100%;
+    background-color: #fcfcfd;
+  }
+
+  /* Simulated Newspaper Paper */
+  .newspaper-paper {
+    background-color: #f6f1e8;
+    background-image: radial-gradient(#e5dec9 1px, transparent 0);
+    background-size: 20px 20px;
+    box-shadow: inset 0 0 40px rgba(0,0,0,0.06);
+  }
+
+  .vintage-title {
+    font-family: 'Noto Serif KR', serif;
+    letter-spacing: -0.5px;
+  }
+
+  .entity-wiki-link {
+    color: #860029;
+    border-bottom: 1.5px dashed #d91d49;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+  .entity-wiki-link:hover {
+    background-color: #fce7ea;
+  }
+
+  .bbox-highlight {
+    border: 2.5px solid #d91d49;
+    background-color: rgba(217, 29, 73, 0.12);
+    box-shadow: 0 0 12px rgba(217, 29, 73, 0.4);
+    transition: all 0.3s ease;
+  }
+  .bbox-normal {
+    border: 1px dashed #94a3b8;
+    background-color: rgba(255, 255, 255, 0.05);
+    transition: all 0.2s ease;
+  }
+  .bbox-normal:hover {
+    border: 1.5px solid #475569;
+    background-color: rgba(71, 85, 105, 0.1);
+  }
 </style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-800 antialiased min-h-screen flex flex-col">
+<body class="bg-[#f8f9fa] text-slate-800 antialiased h-screen flex flex-col overflow-hidden">
 
-  <!-- Top Global Bar -->
-  <div class="bg-crimson-950 text-crimson-200 text-xs py-1.5 px-6 border-b border-crimson-900">
+  <!-- ========================================================================= -->
+  <!-- 0. Top Global Bar & Unified Navigation Header                             -->
+  <!-- ========================================================================= -->
+  <div class="bg-crimson-950 text-crimson-200 text-xs py-1.5 px-6 border-b border-crimson-900 shrink-0 z-50">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
       <div class="flex items-center space-x-3">
         <span class="bg-crimson-800 text-white px-2 py-0.5 rounded text-[10px] font-bold">HUSS</span>
-        <span>고려대학교 인문사회 디지털 융합인재양성사업단 & 고대신문 지능형 아카이브</span>
+        <span class="hidden sm:inline">고려대학교 인문사회 디지털 융합인재양성사업단 & 고대신문 디지털 아카이빙 프로젝트</span>
+        <span class="sm:hidden font-bold">고대신문 HOGraph 플랫폼</span>
       </div>
-      <div class="flex items-center space-x-4 text-[11px]">
-        <span class="hover:text-white cursor-pointer"><i class="fa-solid fa-book-bookmark mr-1"></i>아카이브 이용안내</span>
-        <span class="text-crimson-700">|</span>
-        <span class="hover:text-white cursor-pointer"><i class="fa-solid fa-code-compare mr-1"></i>국한문 자동 대역 사전</span>
+      <div class="flex items-center space-x-3 text-[11px]">
+        <span class="bg-amber-400 text-slate-900 font-extrabold px-1.5 py-0.2 rounded text-[10px]">호(虎) × 호(號) 온톨로지</span>
+        <span class="text-crimson-700 hidden sm:inline">|</span>
+        <span class="hover:text-white cursor-pointer hidden sm:inline"><i class="fa-solid fa-code-compare mr-1"></i>국한문 자동 대역 사전</span>
       </div>
     </div>
   </div>
 
-  <!-- Header Navigation -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
-    <div class="max-w-7xl mx-auto px-6 h-18 flex items-center justify-between py-3">
+  <header class="bg-white border-b border-slate-200 z-40 shadow-xs shrink-0">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
       <!-- Brand Logo -->
-      <div class="flex items-center space-x-3 cursor-pointer">
-        <div class="w-10 h-10 bg-crimson-800 rounded-lg flex items-center justify-center text-white shadow-md">
-          <i class="fa-solid fa-newspaper text-xl"></i>
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="navigateTo('home')">
+        <div class="w-9 h-9 bg-crimson-800 rounded-lg flex items-center justify-center text-white shadow-md">
+          <i class="fa-solid fa-diagram-project text-lg text-amber-300"></i>
         </div>
         <div>
           <div class="flex items-center space-x-2">
-            <span class="text-xl font-black tracking-tight text-crimson-800">고대신문</span>
-            <span class="text-xs bg-crimson-100 text-crimson-800 font-bold px-1.5 py-0.5 rounded border border-crimson-200">AI 지식 아카이브</span>
+            <span class="text-lg font-black tracking-tight text-crimson-800">HOGraph</span>
+            <span class="text-[10px] bg-crimson-100 text-crimson-800 font-bold px-1.5 py-0.5 rounded border border-crimson-200">호그래프 v1.2</span>
           </div>
-          <p class="text-[11px] text-slate-500 font-medium tracking-tight">The Granite Tower Digital Knowledge Graph (1952 ~ 현재)</p>
+          <p class="text-[10px] text-slate-500 font-medium tracking-tight">The Korea University Newspaper Knowledge Graph (1952~)</p>
         </div>
       </div>
 
-      <!-- Main Navigation Menu -->
-      <nav class="hidden md:flex items-center space-x-1 lg:space-x-2 text-sm font-semibold text-slate-700">
-        <a href="#" class="px-3 py-2 rounded-lg text-crimson-800 bg-crimson-50 font-bold"><i class="fa-solid fa-house mr-1.5"></i>홈</a>
-        <a href="#facets" class="px-3 py-2 rounded-lg hover:bg-slate-100 transition"><i class="fa-solid fa-shapes mr-1.5 text-slate-400"></i>6대 패싯 브라우징</a>
-        <a href="#network" class="px-3 py-2 rounded-lg hover:bg-slate-100 transition"><i class="fa-solid fa-diagram-project mr-1.5 text-slate-400"></i>지식 네트워크 그래프</a>
-        <a href="#onthisday" class="px-3 py-2 rounded-lg hover:bg-slate-100 transition"><i class="fa-regular fa-calendar-check mr-1.5 text-slate-400"></i>N년 전 오늘</a>
-        <a href="#wiki" class="px-3 py-2 rounded-lg hover:bg-slate-100 transition"><i class="fa-brands fa-wikipedia-w mr-1.5 text-slate-400"></i>위키 컬렉션</a>
+      <!-- SPA Main View Switcher Tabs -->
+      <nav class="flex items-center space-x-1 sm:space-x-2 text-xs font-bold">
+        <button id="nav-btn-home" onclick="navigateTo('home')" class="nav-tab px-3.5 py-2 rounded-xl bg-crimson-50 text-crimson-800 font-black shadow-xs transition flex items-center space-x-1.5">
+          <i class="fa-solid fa-house"></i>
+          <span>1. 메인 홈 & 6대 패싯</span>
+        </button>
+        <button id="nav-btn-graph" onclick="navigateTo('graph')" class="nav-tab px-3.5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center space-x-1.5">
+          <i class="fa-solid fa-circle-nodes text-crimson-700"></i>
+          <span>2. 지식 네트워크 탐색기</span>
+        </button>
+        <button id="nav-btn-viewer" onclick="navigateTo('viewer')" class="nav-tab px-3.5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center space-x-1.5">
+          <i class="fa-solid fa-newspaper text-crimson-700"></i>
+          <span>3. 지면-텍스트 듀얼 뷰어</span>
+        </button>
       </nav>
 
-      <!-- Right Action -->
-      <div class="flex items-center space-x-3">
-        <button class="flex items-center space-x-2 bg-crimson-800 hover:bg-crimson-900 text-white text-xs font-bold px-3.5 py-2 rounded-lg shadow-sm transition">
-          <i class="fa-solid fa-brain"></i>
+      <!-- Right Action: AI RAG Assistant -->
+      <div class="hidden lg:flex items-center space-x-3">
+        <button onclick="alert('캠퍼스 70년 역사 RAG AI 어시스턴트: 자연어로 학내 사건을 질의할 수 있습니다.')" class="flex items-center space-x-2 bg-slate-900 hover:bg-crimson-800 text-white text-xs font-bold px-3.5 py-2 rounded-lg shadow-xs transition">
+          <i class="fa-solid fa-brain text-amber-300"></i>
           <span>캠퍼스 AI 질의 (RAG)</span>
         </button>
       </div>
     </div>
   </header>
 
-  <!-- Hero & Integrated Search Section -->
-  <section class="bg-gradient-to-b from-crimson-900 via-crimson-800 to-crimson-950 text-white pt-12 pb-16 px-6 relative overflow-hidden">
-    <!-- Background Watermark Pattern -->
-    <div class="absolute inset-0 opacity-5 pointer-events-none flex items-center justify-center">
-      <i class="fa-solid fa-newspaper text-[600px] text-white"></i>
+  <!-- ========================================================================= -->
+  <!-- MAIN WORKSPACE CONTAINER (SPA Views)                                      -->
+  <!-- ========================================================================= -->
+  <div class="flex-1 relative overflow-hidden flex flex-col">
+
+    <!-- ======================================================================= -->
+    <!-- [VIEW 1]: 메인 홈 & 6대 패싯 브라우징 화면                              -->
+    <!-- ======================================================================= -->
+    <div id="view-home" class="spa-view flex-1 overflow-y-auto scrollbar-custom">
+      
+      <!-- Hero & Integrated Search Section -->
+      <section class="bg-gradient-to-b from-crimson-900 via-crimson-800 to-crimson-950 text-white pt-10 pb-14 px-6 relative overflow-hidden">
+        <div class="absolute inset-0 opacity-5 pointer-events-none flex items-center justify-center">
+          <i class="fa-solid fa-newspaper text-[550px] text-white"></i>
+        </div>
+
+        <div class="max-w-4xl mx-auto text-center relative z-10">
+          <div class="inline-flex items-center space-x-2 bg-crimson-950/60 border border-crimson-500/40 rounded-full px-4 py-1.5 text-xs text-crimson-200 mb-4 backdrop-blur-sm">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>총 1,940여 호 · 24,000+ 지면 텍스트 복원 & 시맨틱 온톨로지 인덱싱 완료</span>
+          </div>
+          <h1 class="text-3xl sm:text-4xl font-black tracking-tight mb-3 text-white">
+            1호부터 오늘호까지(號), 호랑이의 70년(虎)을 데이터로 잇다
+          </h1>
+          <p class="text-xs sm:text-sm text-crimson-100 mb-7 max-w-2xl mx-auto font-light leading-relaxed">
+            대한민국 신문 아카이브 표준 검색과 대학사 고유의 5대 엔터티(인물·사건·공간·문화·조직) 관계망을 원클릭으로 연결합니다.
+          </p>
+
+          <!-- Main Search Box Card -->
+          <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-2xl text-slate-800 text-left border border-slate-100">
+            <!-- Search Mode Tabs -->
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-3 text-xs font-bold">
+              <div class="flex space-x-2">
+                <button class="px-3 py-1.5 bg-crimson-800 text-white rounded-lg"><i class="fa-solid fa-magnifying-glass mr-1.5"></i>통합 검색</button>
+                <button onclick="navigateTo('graph')" class="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg transition"><i class="fa-solid fa-diagram-project mr-1.5"></i>개체명(Entity) 탐색</button>
+                <button onclick="navigateTo('viewer')" class="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg transition"><i class="fa-solid fa-file-lines mr-1.5"></i>지면 듀얼 뷰어</button>
+              </div>
+              <div class="hidden sm:flex items-center space-x-2 text-[11px] text-slate-500">
+                <label class="flex items-center space-x-1.5 cursor-pointer">
+                  <input type="checkbox" checked class="rounded text-crimson-800 focus:ring-crimson-800">
+                  <span>국한문(옛한자) 자동 동의어 확장</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Search Input Bar -->
+            <div class="flex flex-col sm:flex-row gap-2">
+              <div class="relative flex-1">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-400"></i>
+                <input type="text" 
+                       id="homeSearchInput"
+                       value="1989년 등록금"
+                       placeholder="검색어 입력 (예: 등록금 인상, 4·18 구국대장정, 총학생회 선거, 정기고연전)" 
+                       class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-crimson-800 focus:bg-white transition">
+              </div>
+              <button onclick="navigateTo('viewer')" class="bg-crimson-800 hover:bg-crimson-900 text-white font-bold px-7 py-3 rounded-xl text-sm transition flex items-center justify-center space-x-2 shadow-md">
+                <span>기사 검색</span>
+                <i class="fa-solid fa-arrow-right text-xs"></i>
+              </button>
+            </div>
+
+            <!-- Filter Selectors Row -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
+              <div>
+                <span class="text-[11px] font-bold text-slate-400 block mb-1">발행 연대</span>
+                <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium focus:outline-none">
+                  <option>전체 연대 (1952~2026)</option>
+                  <option>1950년대 (전후 창간기)</option>
+                  <option>1960·70년대 (유신·학도호국단)</option>
+                  <option selected>1980년대 (민주화·자치 부흥)</option>
+                  <option>1990·2000년대 (대학 현대화)</option>
+                  <option>2010년대 이후 (디지털 세대)</option>
+                </select>
+              </div>
+              <div>
+                <span class="text-[11px] font-bold text-slate-400 block mb-1">기종 (유형)</span>
+                <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium focus:outline-none">
+                  <option>전체 기종 (기사/사설/만평 등)</option>
+                  <option>스트레이트 기사</option>
+                  <option>사설·논설·칼럼</option>
+                  <option>학보문예 (시/소설/수필)</option>
+                  <option>사진·만평</option>
+                  <option>광고·안내</option>
+                </select>
+              </div>
+              <div>
+                <span class="text-[11px] font-bold text-slate-400 block mb-1">지면 위치</span>
+                <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium focus:outline-none">
+                  <option>전체 지면</option>
+                  <option>1면 (종합/헤드라인)</option>
+                  <option>2·3면 (학내기획/보도)</option>
+                  <option>4·5면 (사회/문화/학술)</option>
+                  <option>여론·칼럼면</option>
+                </select>
+              </div>
+              <div>
+                <span class="text-[11px] font-bold text-slate-400 block mb-1">정렬 기준</span>
+                <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium focus:outline-none">
+                  <option>정확도순</option>
+                  <option selected>발행일 최신순</option>
+                  <option>발행일 과거순</option>
+                  <option>엔터티 연결도순</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trending Keywords -->
+          <div class="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs">
+            <span class="text-crimson-200 font-semibold"><i class="fa-solid fa-fire text-amber-400 mr-1"></i>인기 탐색 태그:</span>
+            <button onclick="navigateTo('viewer')" class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#1989년 등록금투쟁</button>
+            <button onclick="navigateTo('graph'); setTimeout(()=>loadScenario('418'), 200);" class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#4·18 구국대장정</button>
+            <button onclick="navigateTo('graph'); setTimeout(()=>loadScenario('koyon'), 200);" class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#정기고연전 승전보</button>
+            <button onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_demo'), 200);" class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#민주광장</button>
+            <button onclick="navigateTo('viewer')" class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#새터자료집</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Body Container -->
+      <div class="max-w-7xl mx-auto px-6 py-10 space-y-12">
+
+        <!-- 1. 6대 패싯 브라우징 -->
+        <section id="facets">
+          <div class="flex flex-col md:flex-row md:items-end justify-between mb-6 pb-3 border-b border-slate-200">
+            <div>
+              <div class="flex items-center space-x-2 text-crimson-800 font-bold text-xs uppercase tracking-wider mb-1">
+                <i class="fa-solid fa-shapes"></i>
+                <span>Faceted Taxonomy Explorer</span>
+              </div>
+              <h2 class="text-2xl font-black text-slate-900 tracking-tight">고대신문 6대 특화 패싯 브라우징</h2>
+              <p class="text-xs text-slate-500 mt-1">대학 기록물 고유의 주제, 기종, 캠퍼스 소재, 인명, 단체, 공간별 다차원 분류 체계</p>
+            </div>
+            <!-- Facet Tab Buttons -->
+            <div class="flex space-x-1 mt-4 md:mt-0 bg-slate-100 p-1 rounded-xl text-xs font-bold scrollbar-hide overflow-x-auto">
+              <button onclick="switchFacet('theme')" id="tab-theme" class="facet-tab px-3 py-1.5 rounded-lg bg-crimson-800 text-white shadow-xs transition">1. 주제 (8)</button>
+              <button onclick="switchFacet('type')" id="tab-type" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">2. 기종 (10)</button>
+              <button onclick="switchFacet('subject')" id="tab-subject" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">3. 캠퍼스 소재 (12)</button>
+              <button onclick="switchFacet('person')" id="tab-person" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">4. 인명 (20+)</button>
+              <button onclick="switchFacet('org')" id="tab-org" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">5. 단체·조직 (15+)</button>
+              <button onclick="switchFacet('space')" id="tab-space" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">6. 캠퍼스 공간 (16+)</button>
+            </div>
+          </div>
+
+          <!-- Facet Panels Container -->
+          <div id="facetContent" class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
+
+            <!-- Facet 1: 주제 (Theme) -->
+            <div id="panel-theme" class="facet-panel grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+              <div onclick="navigateTo('viewer')" class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-2xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
+                  <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">교내</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">8,420건</div>
+              </div>
+              <div onclick="navigateTo('graph')" class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-2xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
+                  <i class="fa-solid fa-user-group"></i>
+                </div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">교우·동문</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">3,120건</div>
+              </div>
+              <div onclick="navigateTo('viewer')" class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-2xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
+                  <i class="fa-solid fa-landmark"></i>
+                </div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">사회·시사</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">4,890건</div>
+              </div>
+              <div onclick="navigateTo('viewer')" class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-2xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
+                  <i class="fa-solid fa-book-open-reader"></i>
+                </div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">학술·연구</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">2,780건</div>
+              </div>
+              <div onclick="navigateTo('viewer')" class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-2xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
+                  <i class="fa-solid fa-masks-theater"></i>
+                </div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">문화·예술</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">3,640건</div>
+              </div>
+              <div onclick="navigateTo('graph')" class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-2xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
+                  <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">정치·자치</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">4,150건</div>
+              </div>
+              <div onclick="navigateTo('viewer')" class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-2xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
+                  <i class="fa-solid fa-chart-line"></i>
+                </div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">경제·청년</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">1,930건</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>loadScenario('koyon'), 200);" class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-2xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
+                  <i class="fa-solid fa-trophy"></i>
+                </div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">체육·고연전</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">3,210건</div>
+              </div>
+            </div>
+
+            <!-- Facet 2: 기종/유형 (Type) -->
+            <div id="panel-type" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div onclick="navigateTo('viewer')" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
+                <span class="group-hover:text-crimson-800"><i class="fa-solid fa-newspaper text-slate-400 group-hover:text-crimson-800 mr-2"></i>스트레이트 기사</span>
+                <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">12,400</span>
+              </div>
+              <div onclick="navigateTo('viewer')" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
+                <span class="group-hover:text-crimson-800"><i class="fa-solid fa-pen-nib text-slate-400 group-hover:text-crimson-800 mr-2"></i>사설 및 논설</span>
+                <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">2,310</span>
+              </div>
+              <div onclick="navigateTo('viewer')" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
+                <span class="group-hover:text-crimson-800"><i class="fa-solid fa-feather text-slate-400 group-hover:text-crimson-800 mr-2"></i>칼럼 및 자유기고</span>
+                <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">4,120</span>
+              </div>
+              <div onclick="navigateTo('viewer')" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
+                <span class="group-hover:text-crimson-800"><i class="fa-solid fa-microphone text-slate-400 group-hover:text-crimson-800 mr-2"></i>인터뷰·대담</span>
+                <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">1,890</span>
+              </div>
+              <div onclick="navigateTo('viewer')" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
+                <span class="group-hover:text-crimson-800"><i class="fa-solid fa-scroll text-slate-400 group-hover:text-crimson-800 mr-2"></i>학보문예(시/소설/수필)</span>
+                <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">980</span>
+              </div>
+            </div>
+
+            <!-- Facet 3: 소재 (Subject) -->
+            <div id="panel-subject" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div onclick="navigateTo('viewer')" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
+                  <span>🚩 등록금 투쟁 및 책정 갈등</span>
+                  <span class="text-[10px] text-slate-400 font-normal">342건</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">1989 자율화 반대부터 연도별 등심위</p>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>loadScenario('418'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
+                  <span>🏛️ 4·18 구국대장정 & 의거</span>
+                  <span class="text-[10px] text-slate-400 font-normal">580건</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">1960년 4·18 주역 기록 및 매년 헌화</p>
+              </div>
+              <div onclick="navigateTo('graph')" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
+                  <span>🗳️ 총학생회 선거 & 직선제</span>
+                  <span class="text-[10px] text-slate-400 font-normal">620건</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">역대 총학 선본 공약집 및 전학대회</p>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>loadScenario('koyon'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
+                  <span>🦅 정기고연전 (5대 종목)</span>
+                  <span class="text-[10px] text-slate-400 font-normal">1,120건</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">야구·농구·빙구·럭비·축구 전적</p>
+              </div>
+            </div>
+
+            <!-- Facet 4: 인명 (Person) -->
+            <div id="panel-person" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+              <div onclick="navigateTo('graph')" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
+                <div class="w-11 h-11 rounded-full bg-slate-200 mx-auto mb-1.5 flex items-center justify-center text-slate-600 font-bold text-xs group-hover:bg-crimson-800 group-hover:text-white transition">인촌</div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">김성수 (金性洙)</div>
+                <div class="text-[10px] text-slate-400">설립자 · 420건</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('per_kimjunyup'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
+                <div class="w-11 h-11 rounded-full bg-slate-200 mx-auto mb-1.5 flex items-center justify-center text-slate-600 font-bold text-xs group-hover:bg-crimson-800 group-hover:text-white transition">김준</div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">김준엽 (金俊燁)</div>
+                <div class="text-[10px] text-slate-400">전 총장 · 295건</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('per_chojihoon'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
+                <div class="w-11 h-11 rounded-full bg-slate-200 mx-auto mb-1.5 flex items-center justify-center text-slate-600 font-bold text-xs group-hover:bg-crimson-800 group-hover:text-white transition">조지</div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">조지훈 (趙芝薰)</div>
+                <div class="text-[10px] text-slate-400">교수/시인 · 210건</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('per_chabum'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
+                <div class="w-11 h-11 rounded-full bg-slate-200 mx-auto mb-1.5 flex items-center justify-center text-slate-600 font-bold text-xs group-hover:bg-crimson-800 group-hover:text-white transition">차범</div>
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">차범근 (체교 72)</div>
+                <div class="text-[10px] text-slate-400">고연전 스타 · 145건</div>
+              </div>
+            </div>
+
+            <!-- Facet 5: 단체/조직 (Organization) -->
+            <div id="panel-org" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('org_stu_union'), 200);" class="p-3.5 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">고려대학교 총학생회</div>
+                <div class="text-[11px] text-slate-500 mt-1">안암총학, 대동제 및 학내투쟁 주도</div>
+                <div class="text-[10px] text-crimson-700 font-bold mt-2">관련 기사 1,840건</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('org_newspaper'), 200);" class="p-3.5 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">고대신문사 (학보사)</div>
+                <div class="text-[11px] text-slate-500 mt-1">1952년 창간 지면 발행 주체 및 편집국</div>
+                <div class="text-[10px] text-crimson-700 font-bold mt-2">관련 기사 1,940호 전권</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('org_cheer'), 200);" class="p-3.5 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">고려대학교 응원단 (KUBA)</div>
+                <div class="text-[11px] text-slate-500 mt-1">입실렌티 및 정기고연전 응원 주관</div>
+                <div class="text-[10px] text-crimson-700 font-bold mt-2">관련 기사 530건</div>
+              </div>
+            </div>
+
+            <!-- Facet 6: 캠퍼스 공간 (Space) -->
+            <div id="panel-space" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+              <div onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_demo'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>민주광장</div>
+                <div class="text-[10px] text-slate-500 mt-1">학내 집회·대자보의 중심</div>
+                <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 1,420건</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_main'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>본관 및 중앙광장</div>
+                <div class="text-[10px] text-slate-500 mt-1">점거 농성, 총장실, 잔디광장</div>
+                <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 1,890건</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_scilib'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>애기능 & 과도</div>
+                <div class="text-[10px] text-slate-500 mt-1">자연계 캠퍼스 자치 거점</div>
+                <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 610건</div>
+              </div>
+              <div onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_green'), 200);" class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
+                <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>녹지운동장</div>
+                <div class="text-[10px] text-slate-500 mt-1">응원 오리엔테이션, 체육대회</div>
+                <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 480건</div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- 2. N년 전 오늘 & 네트워크 랭킹 -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div class="lg:col-span-2 space-y-4">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div class="flex items-center space-x-2">
+                <div class="w-7 h-7 rounded-lg bg-crimson-100 text-crimson-800 flex items-center justify-center text-xs font-black">
+                  <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+                <h3 class="text-lg font-black text-slate-900 tracking-tight">N년 전 오늘, 고대신문의 기록</h3>
+              </div>
+              <span class="text-xs text-slate-500 font-medium">기준일: 8월 28일 발행 지면</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Article 1 -->
+              <div onclick="navigateTo('viewer')" class="bg-white rounded-xl p-4 border border-slate-200 shadow-xs hover:border-crimson-400 hover:shadow-md transition cursor-pointer flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between text-[11px] mb-2">
+                    <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">37년 전 오늘 (1989.08.28)</span>
+                    <span class="text-slate-400">제984호 1면 톱</span>
+                  </div>
+                  <h4 class="text-sm font-bold text-slate-900 line-clamp-2 hover:text-crimson-800 leading-snug">
+                    [1면 톱] "등록금 자율화 후폭풍… 학생총회, 본관 앞 철야 농성 돌입"
+                  </h4>
+                  <p class="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
+                    문교부의 등록금 자율화 조치 이후 첫 2학기 개강을 맞아 총학생회와 단과대학생회 연석회의는 인상분 전액 환원을 요구하며 무기한 농성에 결의하였다...
+                  </p>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                  <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">#1989등록금투쟁</span>
+                  <span class="text-crimson-800 font-bold">듀얼 뷰어로 열기 ➔</span>
+                </div>
+              </div>
+
+              <!-- Article 2 -->
+              <div onclick="navigateTo('viewer')" class="bg-white rounded-xl p-4 border border-slate-200 shadow-xs hover:border-crimson-400 hover:shadow-md transition cursor-pointer flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between text-[11px] mb-2">
+                    <span class="bg-blue-100 text-blue-900 font-bold px-2 py-0.5 rounded">50년 전 오늘 (1976.08.28)</span>
+                    <span class="text-slate-400">제620호 3면 학술</span>
+                  </div>
+                  <h4 class="text-sm font-bold text-slate-900 line-clamp-2 hover:text-crimson-800 leading-snug">
+                    [학술기획] "民族大學의 理念과 現代 學生運動의 座標"
+                  </h4>
+                  <p class="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
+                    본교 국문과 조지훈 교수의 유고와 학보 기고문을 재조명하며, 유신 체제 하에서 고대 정신이 지향해야 할 학문적 자율성과 민족적 사명을 논한다...
+                  </p>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                  <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">#조지훈</span>
+                  <span class="text-crimson-800 font-bold">기사 열람 ➔</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Comparison Box -->
+            <div class="bg-gradient-to-r from-crimson-50 to-slate-50 border border-crimson-200 rounded-xl p-4 flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-code-compare text-crimson-800 text-xl"></i>
+                <div>
+                  <div class="text-xs font-bold text-crimson-900">[시대 간 아젠다 교차비교] 등록금 인상 논쟁의 40년 궤적</div>
+                  <div class="text-[11px] text-slate-600">1989년 자율화 반대 투쟁 ↔ 2024년 등심위 기사 연결 비교 뷰어 열람</div>
+                </div>
+              </div>
+              <button onclick="navigateTo('viewer')" class="bg-crimson-800 hover:bg-crimson-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shrink-0">
+                비교 뷰어 보기
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Network Ranking -->
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-diagram-project text-crimson-800 mr-1"></i>
+                  <span>지식 네트워크 연결도 TOP 5</span>
+                </h3>
+                <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded">엔터티 랭킹</span>
+              </div>
+              <ul class="space-y-2 text-xs">
+                <li onclick="navigateTo('graph'); setTimeout(()=>loadScenario('418'), 200);" class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
+                  <div class="flex items-center space-x-2">
+                    <span class="w-5 h-5 rounded-full bg-crimson-800 text-white text-[10px] font-bold flex items-center justify-center">1</span>
+                    <span class="font-bold text-slate-800">4·18 구국대장정</span>
+                    <span class="text-[10px] text-slate-400">[사건]</span>
+                  </div>
+                  <span class="text-[10px] font-semibold text-crimson-700">기사 580건</span>
+                </li>
+                <li onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_demo'), 200);" class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
+                  <div class="flex items-center space-x-2">
+                    <span class="w-5 h-5 rounded-full bg-slate-300 text-slate-700 text-[10px] font-bold flex items-center justify-center">2</span>
+                    <span class="font-bold text-slate-800">민주광장</span>
+                    <span class="text-[10px] text-slate-400">[공간]</span>
+                  </div>
+                  <span class="text-[10px] font-semibold text-crimson-700">기사 1,420건</span>
+                </li>
+                <li onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('per_kimjunyup'), 200);" class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
+                  <div class="flex items-center space-x-2">
+                    <span class="w-5 h-5 rounded-full bg-slate-300 text-slate-700 text-[10px] font-bold flex items-center justify-center">3</span>
+                    <span class="font-bold text-slate-800">김준엽 총장</span>
+                    <span class="text-[10px] text-slate-400">[인물]</span>
+                  </div>
+                  <span class="text-[10px] font-semibold text-crimson-700">기사 295건</span>
+                </li>
+                <li onclick="navigateTo('graph'); setTimeout(()=>loadScenario('koyon'), 200);" class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
+                  <div class="flex items-center space-x-2">
+                    <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center">4</span>
+                    <span class="font-bold text-slate-800">정기고연전 축구</span>
+                    <span class="text-[10px] text-slate-400">[문화]</span>
+                  </div>
+                  <span class="text-[10px] font-semibold text-crimson-700">기사 430건</span>
+                </li>
+              </ul>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100">
+              <button onclick="navigateTo('graph')" class="w-full bg-slate-900 hover:bg-crimson-800 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center space-x-2 transition">
+                <i class="fa-solid fa-circle-nodes"></i>
+                <span>전체 인터랙티브 네트워크 열기</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Footer -->
+      <footer class="bg-slate-900 text-slate-400 text-xs py-8 px-6 border-t border-slate-800 mt-12">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+          <div>
+            <div class="text-white font-bold text-sm mb-1">
+              <span class="text-crimson-500">HOGraph (호그래프)</span> : 고대신문 시맨틱 지식 아카이브
+            </div>
+            <p class="text-slate-500 text-[11px]">
+              This research was supported by Humanities Utmost Sharing System (HUSS) through the NRF funded by the Ministry of Education.
+            </p>
+          </div>
+          <div class="text-right text-[11px] text-slate-500">
+            <p>© 2026 Korea University Newspaper & DHUSS. All Rights Reserved.</p>
+          </div>
+        </div>
+      </footer>
+
     </div>
 
-    <div class="max-w-4xl mx-auto text-center relative z-10">
-      <div class="inline-flex items-center space-x-2 bg-crimson-950/60 border border-crimson-500/40 rounded-full px-4 py-1.5 text-xs text-crimson-200 mb-4 backdrop-blur-sm">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>총 1,940여 호 · 24,000+ 지면 텍스트 복원 & 시맨틱 인덱싱 완료</span>
-      </div>
-      <h1 class="text-3xl sm:text-4xl font-black tracking-tight mb-3 text-white">
-        70년 고대 역사를 데이터와 네트워크로 탐색하다
-      </h1>
-      <p class="text-sm sm:text-base text-crimson-100 mb-8 max-w-2xl mx-auto font-light leading-relaxed">
-        대한민국 신문 아카이브 표준 검색과 대학사 고유의 5대 엔터티(인물·사건·공간·문화·조직) 관계망을 원클릭으로 연결합니다.
-      </p>
-
-      <!-- Main Search Box Card -->
-      <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-2xl text-slate-800 text-left border border-slate-100">
-        <!-- Search Mode Tabs -->
-        <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-3 text-xs font-bold">
-          <div class="flex space-x-2">
-            <button class="px-3 py-1.5 bg-crimson-800 text-white rounded-lg"><i class="fa-solid fa-magnifying-glass mr-1.5"></i>통합 검색</button>
-            <button class="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg transition"><i class="fa-solid fa-calendar-days mr-1.5"></i>발행일/호수 상세 검색</button>
-            <button class="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg transition"><i class="fa-solid fa-diagram-project mr-1.5"></i>개체명(Entity) 탐색</button>
-          </div>
-          <div class="hidden sm:flex items-center space-x-2 text-[11px] text-slate-500">
-            <label class="flex items-center space-x-1.5 cursor-pointer">
-              <input type="checkbox" checked class="rounded text-crimson-800 focus:ring-crimson-800">
-              <span>국한문(옛한자) 자동 동의어 확장</span>
+    <!-- ======================================================================= -->
+    <!-- [VIEW 2]: 인터랙티브 지식 네트워크 그래프 탐색기 화면                  -->
+    <!-- ======================================================================= -->
+    <div id="view-graph" class="spa-view hidden flex-1 flex overflow-hidden">
+      
+      <!-- [Left Sidebar]: Entity Filters & Campus Mini-Map (Width: 320px) -->
+      <aside class="w-80 bg-white border-r border-slate-200 flex flex-col z-20 shrink-0 shadow-sm overflow-y-auto scrollbar-custom">
+        <!-- Entity Filters -->
+        <div class="p-4 border-b border-slate-100">
+          <h3 class="text-xs font-bold text-slate-900 mb-2.5 flex items-center justify-between">
+            <span><i class="fa-solid fa-filter text-crimson-800 mr-1.5"></i>6대 엔터티 클래스 필터</span>
+            <span class="text-[10px] text-slate-400 font-normal">다중 토글</span>
+          </h3>
+          <div class="grid grid-cols-2 gap-1.5 text-xs">
+            <label class="flex items-center space-x-2 p-1.5 rounded-lg bg-red-50 border border-red-200 cursor-pointer hover:bg-red-100 transition">
+              <input type="checkbox" checked onchange="toggleEntityType('article')" class="rounded text-red-600 focus:ring-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+              <span class="font-bold text-slate-700 text-[11px]">기사 (Article)</span>
+            </label>
+            <label class="flex items-center space-x-2 p-1.5 rounded-lg bg-blue-50 border border-blue-200 cursor-pointer hover:bg-blue-100 transition">
+              <input type="checkbox" checked onchange="toggleEntityType('person')" class="rounded text-blue-600 focus:ring-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+              <span class="font-bold text-slate-700 text-[11px]">인물 (Person)</span>
+            </label>
+            <label class="flex items-center space-x-2 p-1.5 rounded-lg bg-amber-50 border border-amber-200 cursor-pointer hover:bg-amber-100 transition">
+              <input type="checkbox" checked onchange="toggleEntityType('event')" class="rounded text-amber-600 focus:ring-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span class="font-bold text-slate-700 text-[11px]">사건 (Event)</span>
+            </label>
+            <label class="flex items-center space-x-2 p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition">
+              <input type="checkbox" checked onchange="toggleEntityType('space')" class="rounded text-emerald-600 focus:ring-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span class="font-bold text-slate-700 text-[11px]">공간 (Space)</span>
+            </label>
+            <label class="flex items-center space-x-2 p-1.5 rounded-lg bg-purple-50 border border-purple-200 cursor-pointer hover:bg-purple-100 transition">
+              <input type="checkbox" checked onchange="toggleEntityType('org')" class="rounded text-purple-600 focus:ring-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+              <span class="font-bold text-slate-700 text-[11px]">조직 (Org)</span>
+            </label>
+            <label class="flex items-center space-x-2 p-1.5 rounded-lg bg-cyan-50 border border-cyan-200 cursor-pointer hover:bg-cyan-100 transition">
+              <input type="checkbox" checked onchange="toggleEntityType('culture')" class="rounded text-cyan-600 focus:ring-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
+              <span class="font-bold text-slate-700 text-[11px]">문화 (Culture)</span>
             </label>
           </div>
         </div>
 
-        <!-- Search Input Bar -->
-        <div class="flex flex-col sm:flex-row gap-2">
-          <div class="relative flex-1">
-            <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-400"></i>
-            <input type="text" 
-                   value="1989년 등록금"
-                   placeholder="검색어 입력 (예: 등록금 인상, 4·18 구국대장정, 총학생회 선거, 정기고연전)" 
-                   class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-crimson-800 focus:bg-white transition">
+        <!-- Time Slider -->
+        <div class="p-4 border-b border-slate-100 bg-slate-50/50">
+          <div class="flex items-center justify-between text-xs font-bold text-slate-800 mb-1.5">
+            <span><i class="fa-regular fa-clock text-crimson-800 mr-1"></i>시계열 필터</span>
+            <span id="currentEraLabel" class="text-crimson-700 font-black">전체 연대 (1952~2026)</span>
           </div>
-          <button class="bg-crimson-800 hover:bg-crimson-900 text-white font-bold px-7 py-3 rounded-xl text-sm transition flex items-center justify-center space-x-2 shadow-md">
-            <span>기사 검색</span>
-            <i class="fa-solid fa-arrow-right text-xs"></i>
-          </button>
-        </div>
-
-        <!-- Filter Selectors Row -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
-          <div>
-            <span class="text-[11px] font-bold text-slate-400 block mb-1">발행 연대</span>
-            <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium focus:outline-none">
-              <option>전체 연대 (1952~2026)</option>
-              <option>1950년대 (전후 창간기)</option>
-              <option>1960·70년대 (유신·학도호국단)</option>
-              <option selected>1980년대 (민주화·자치 부흥)</option>
-              <option>1990·2000년대 (대학 현대화)</option>
-              <option>2010년대 이후 (디지털 세대)</option>
-            </select>
-          </div>
-          <div>
-            <span class="text-[11px] font-bold text-slate-400 block mb-1">기종 (유형)</span>
-            <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium focus:outline-none">
-              <option>전체 기종 (기사/사설/만평 등)</option>
-              <option>스트레이트 기사</option>
-              <option>사설·논설·칼럼</option>
-              <option>학보문예 (시/소설/수필)</option>
-              <option>사진·만평</option>
-              <option>광고·안내</option>
-            </select>
-          </div>
-          <div>
-            <span class="text-[11px] font-bold text-slate-400 block mb-1">지면 위치</span>
-            <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium focus:outline-none">
-              <option>전체 지면</option>
-              <option>1면 (종합/헤드라인)</option>
-              <option>2·3면 (학내기획/보도)</option>
-              <option>4·5면 (사회/문화/학술)</option>
-              <option>여론·칼럼면</option>
-            </select>
-          </div>
-          <div>
-            <span class="text-[11px] font-bold text-slate-400 block mb-1">정렬 기준</span>
-            <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium focus:outline-none">
-              <option>정확도순</option>
-              <option selected>발행일 최신순</option>
-              <option>발행일 과거순</option>
-              <option>엔터티 연결도순</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Trending Keywords / Entities -->
-      <div class="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs">
-        <span class="text-crimson-200 font-semibold"><i class="fa-solid fa-fire text-amber-400 mr-1"></i>인기 탐색 태그:</span>
-        <button class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#1989년 등록금투쟁</button>
-        <button class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#4·18 구국대장정</button>
-        <button class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#정기고연전 승전보</button>
-        <button class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#민주광장</button>
-        <button class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#새터자료집</button>
-        <button class="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm transition">#총학생회 직선제</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- Main Content Layout -->
-  <main class="max-w-7xl mx-auto px-6 py-10 flex-1 space-y-12">
-
-    <!-- 1. 6대 패싯 브라우징 (Interactive 6-Facet Explorer) -->
-    <section id="facets" class="scroll-mt-24">
-      <div class="flex flex-col md:flex-row md:items-end justify-between mb-6 pb-3 border-b border-slate-200">
-        <div>
-          <div class="flex items-center space-x-2 text-crimson-800 font-bold text-xs uppercase tracking-wider mb-1">
-            <i class="fa-solid fa-shapes"></i>
-            <span>Faceted Taxonomy Explorer</span>
-          </div>
-          <h2 class="text-2xl font-black text-slate-900 tracking-tight">고대신문 6대 특화 패싯 브라우징</h2>
-          <p class="text-xs text-slate-500 mt-1">대학 기록물 고유의 주제, 기종, 캠퍼스 소재, 인명, 단체, 공간별 다차원 분류 체계</p>
-        </div>
-        <!-- Facet Tab Buttons -->
-        <div class="flex space-x-1 mt-4 md:mt-0 bg-slate-100 p-1 rounded-xl text-xs font-bold scrollbar-hide overflow-x-auto" id="facetTabContainer">
-          <button onclick="switchFacet('theme')" id="tab-theme" class="facet-tab px-3 py-1.5 rounded-lg bg-crimson-800 text-white shadow-sm transition">1. 주제 (8)</button>
-          <button onclick="switchFacet('type')" id="tab-type" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">2. 기종 (10)</button>
-          <button onclick="switchFacet('subject')" id="tab-subject" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">3. 캠퍼스 소재 (12)</button>
-          <button onclick="switchFacet('person')" id="tab-person" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">4. 인명 (20+)</button>
-          <button onclick="switchFacet('org')" id="tab-org" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">5. 단체·조직 (15+)</button>
-          <button onclick="switchFacet('space')" id="tab-space" class="facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition">6. 캠퍼스 공간 (16+)</button>
-        </div>
-      </div>
-
-      <!-- Facet Panels Container -->
-      <div id="facetContent" class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm transition-all duration-300">
-
-        <!-- Facet 1: 주제 (Theme) -->
-        <div id="panel-theme" class="facet-panel grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-          <div class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
-            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
-              <i class="fa-solid fa-graduation-cap"></i>
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">교내</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">8,420건</div>
-          </div>
-          <div class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
-            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
-              <i class="fa-solid fa-user-group"></i>
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">교우·동문</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">3,120건</div>
-          </div>
-          <div class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
-            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
-              <i class="fa-solid fa-landmark"></i>
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">사회·시사</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">4,890건</div>
-          </div>
-          <div class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
-            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
-              <i class="fa-solid fa-book-open-reader"></i>
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">학술·연구</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">2,780건</div>
-          </div>
-          <div class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
-            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
-              <i class="fa-solid fa-masks-theater"></i>
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">문화·예술</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">3,640건</div>
-          </div>
-          <div class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
-            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
-              <i class="fa-solid fa-scale-balanced"></i>
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">정치·자치</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">4,150건</div>
-          </div>
-          <div class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
-            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
-              <i class="fa-solid fa-chart-line"></i>
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">경제·청년</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">1,930건</div>
-          </div>
-          <div class="bg-slate-50 hover:bg-crimson-50 border border-slate-200 hover:border-crimson-300 rounded-xl p-3.5 text-center cursor-pointer transition group">
-            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto text-crimson-800 shadow-xs mb-2 group-hover:bg-crimson-800 group-hover:text-white transition">
-              <i class="fa-solid fa-trophy"></i>
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">체육·고연전</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">3,210건</div>
+          <input type="range" min="0" max="4" value="0" step="1" oninput="changeEra(this.value)" 
+                 class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-crimson-800">
+          <div class="flex justify-between text-[10px] text-slate-400 mt-1 font-semibold">
+            <span>전체</span>
+            <span>1960</span>
+            <span>1970</span>
+            <span>1989</span>
+            <span>2020+</span>
           </div>
         </div>
 
-        <!-- Facet 2: 기종/유형 (Type) -->
-        <div id="panel-type" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-newspaper text-slate-400 group-hover:text-crimson-800 mr-2"></i>스트레이트 기사</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">12,400</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-pen-nib text-slate-400 group-hover:text-crimson-800 mr-2"></i>사설 및 논설</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">2,310</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-feather text-slate-400 group-hover:text-crimson-800 mr-2"></i>칼럼 및 자유기고</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">4,120</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-microphone text-slate-400 group-hover:text-crimson-800 mr-2"></i>인터뷰·대담</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">1,890</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-scroll text-slate-400 group-hover:text-crimson-800 mr-2"></i>학보문예(시/소설/수필)</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">980</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-regular fa-image text-slate-400 group-hover:text-crimson-800 mr-2"></i>사진·화보</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">3,450</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-face-smile text-slate-400 group-hover:text-crimson-800 mr-2"></i>만평·호랑이 만화</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">1,240</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-bullhorn text-slate-400 group-hover:text-crimson-800 mr-2"></i>공고 및 학생회 알림</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">2,870</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-rectangle-ad text-slate-400 group-hover:text-crimson-800 mr-2"></i>과거 상업·서적 광고</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">3,100</span>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold flex justify-between items-center group">
-            <span class="group-hover:text-crimson-800"><i class="fa-solid fa-bell text-slate-400 group-hover:text-crimson-800 mr-2"></i>부음·동정</span>
-            <span class="text-[10px] bg-white px-2 py-0.5 rounded text-slate-500 border border-slate-200">890</span>
-          </div>
-        </div>
-
-        <!-- Facet 3: 소재 (Subject) -->
-        <div id="panel-subject" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
-              <span>🚩 등록금 투쟁 및 책정 갈등</span>
-              <span class="text-[10px] text-slate-400 font-normal">342건</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">1989 자율화 반대부터 연도별 등록금심의위원회</p>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
-              <span>🏛️ 4·18 구국대장정 & 의거</span>
-              <span class="text-[10px] text-slate-400 font-normal">580건</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">1960년 4·18 주역들의 기록 및 매년 헌화·마라톤</p>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
-              <span>🗳️ 총학생회 선거 & 직선제</span>
-              <span class="text-[10px] text-slate-400 font-normal">620건</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">역대 총학 선본 공약집, 투표율, 전학대회 의결</p>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
-              <span>🦅 정기고연전 (5대 종목)</span>
-              <span class="text-[10px] text-slate-400 font-normal">1,120건</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">야구·농구·빙구·럭비·축구 전적 및 현장 르포</p>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
-              <span>🎉 석탑대동제 & 입실렌티</span>
-              <span class="text-[10px] text-slate-400 font-normal">490건</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">시대별 캠퍼스 축제 풍경과 주점·응원제 변천사</p>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
-              <span>📖 새터(새내기배움터) 자료집</span>
-              <span class="text-[10px] text-slate-400 font-normal">180건</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">소실 위기 비정형 단과대/학과 새터 발간물 복원</p>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
-              <span>📚 수강신청 대란 & 학점제 개편</span>
-              <span class="text-[10px] text-slate-400 font-normal">270건</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">수작업 수강신청부터 광클 서버 마비, 상대평가 논쟁</p>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800 flex items-center justify-between">
-              <span>🏗️ 학과 신설·통폐합 & 단과대 개편</span>
-              <span class="text-[10px] text-slate-400 font-normal">310건</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">정경대·공과대 분과 역사, 첨단 학부 신설 공방</p>
-          </div>
-        </div>
-
-        <!-- Facet 4: 인명 (Person) -->
-        <div id="panel-person" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
-            <div class="w-12 h-12 rounded-full bg-slate-200 mx-auto mb-2 flex items-center justify-center text-slate-600 font-bold text-sm group-hover:bg-crimson-800 group-hover:text-white transition">
-              인촌
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">김성수 (金性洙)</div>
-            <div class="text-[10px] text-slate-400">설립자 · 기사 420건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
-            <div class="w-12 h-12 rounded-full bg-slate-200 mx-auto mb-2 flex items-center justify-center text-slate-600 font-bold text-sm group-hover:bg-crimson-800 group-hover:text-white transition">
-              유진
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">유진오 (兪鎭午)</div>
-            <div class="text-[10px] text-slate-400">역대 총장 · 기사 380건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
-            <div class="w-12 h-12 rounded-full bg-slate-200 mx-auto mb-2 flex items-center justify-center text-slate-600 font-bold text-sm group-hover:bg-crimson-800 group-hover:text-white transition">
-              조지
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">조지훈 (趙芝薰)</div>
-            <div class="text-[10px] text-slate-400">국문과 교수/시인 · 기사 210건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
-            <div class="w-12 h-12 rounded-full bg-slate-200 mx-auto mb-2 flex items-center justify-center text-slate-600 font-bold text-sm group-hover:bg-crimson-800 group-hover:text-white transition">
-              김준
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">김준엽 (金俊燁)</div>
-            <div class="text-[10px] text-slate-400">전 총장 · 기사 295건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
-            <div class="w-12 h-12 rounded-full bg-slate-200 mx-auto mb-2 flex items-center justify-center text-slate-600 font-bold text-sm group-hover:bg-crimson-800 group-hover:text-white transition">
-              이명
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">이명박 (경영 61)</div>
-            <div class="text-[10px] text-slate-400">상대 학생회장/교우 · 190건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer text-center group">
-            <div class="w-12 h-12 rounded-full bg-slate-200 mx-auto mb-2 flex items-center justify-center text-slate-600 font-bold text-sm group-hover:bg-crimson-800 group-hover:text-white transition">
-              차범
-            </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">차범근 (체교 72)</div>
-            <div class="text-[10px] text-slate-400">고연전 축구스타 · 145건</div>
-          </div>
-        </div>
-
-        <!-- Facet 5: 단체/조직 (Organization) -->
-        <div id="panel-org" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div class="p-3.5 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">고려대학교 총학생회</div>
-            <div class="text-[11px] text-slate-500 mt-1">안암총학, 대동제 및 학내투쟁 주도</div>
-            <div class="text-[10px] text-crimson-700 font-bold mt-2">관련 기사 1,840건</div>
-          </div>
-          <div class="p-3.5 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">고대신문사 (학보사)</div>
-            <div class="text-[11px] text-slate-500 mt-1">1952년 창간 지면 발행 주체 및 편집국</div>
-            <div class="text-[10px] text-crimson-700 font-bold mt-2">관련 기사 1,940호 전권</div>
-          </div>
-          <div class="p-3.5 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">고려대학교 응원단 (KUBA)</div>
-            <div class="text-[11px] text-slate-500 mt-1">입실렌티 및 정기고연전 응원 주관</div>
-            <div class="text-[10px] text-crimson-700 font-bold mt-2">관련 기사 530건</div>
-          </div>
-          <div class="p-3.5 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800">동아리연합회 및 극예술연구회</div>
-            <div class="text-[11px] text-slate-500 mt-1">중앙동아리 공연·전시 및 탈패 활동</div>
-            <div class="text-[10px] text-crimson-700 font-bold mt-2">관련 기사 790건</div>
-          </div>
-        </div>
-
-        <!-- Facet 6: 캠퍼스 공간 (Space) -->
-        <div id="panel-space" class="facet-panel hidden grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>민주광장</div>
-            <div class="text-[10px] text-slate-500 mt-1">학내 집회·단식·대자보의 중심</div>
-            <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 1,420건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>본관 및 중앙광장</div>
-            <div class="text-[10px] text-slate-500 mt-1">점거 농성, 총장실, 잔디광장</div>
-            <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 1,890건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>학생회관 & 홍보관</div>
-            <div class="text-[10px] text-slate-500 mt-1">총학실, 동아리방, 학보사 편집국</div>
-            <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 920건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>애기능 & 과학도서관</div>
-            <div class="text-[10px] text-slate-500 mt-1">자연계 캠퍼스 자치 및 학술 거점</div>
-            <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 610건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>녹지운동장·화정체육관</div>
-            <div class="text-[10px] text-slate-500 mt-1">응원 오리엔테이션, 체육대회</div>
-            <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 480건</div>
-          </div>
-          <div class="p-3 bg-slate-50 hover:bg-crimson-50 border border-slate-200 rounded-xl cursor-pointer group">
-            <div class="text-xs font-bold text-slate-800 group-hover:text-crimson-800"><i class="fa-solid fa-location-dot text-crimson-800 mr-1"></i>참살이길 & 안암오거리</div>
-            <div class="text-[10px] text-slate-500 mt-1">고대앞 하숙집, 전통주점, 상권 르포</div>
-            <div class="text-[10px] text-crimson-700 font-semibold mt-1">기사 730건</div>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- 2. N년 전 오늘의 고대 & 시대별 교차비교 큐레이션 -->
-    <section id="onthisday" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      
-      <!-- Left 2 Cols: N년 전 오늘의 고대신문 -->
-      <div class="lg:col-span-2 space-y-4">
-        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-          <div class="flex items-center space-x-2">
-            <div class="w-7 h-7 rounded-lg bg-crimson-100 text-crimson-800 flex items-center justify-center text-xs font-black">
-              <i class="fa-solid fa-clock-rotate-left"></i>
-            </div>
-            <h3 class="text-lg font-black text-slate-900 tracking-tight">N년 전 오늘, 고대신문의 기록</h3>
-          </div>
-          <span class="text-xs text-slate-500 font-medium">기준일: 8월 28일 발행 지면</span>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <!-- Article Card 1 -->
-          <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:border-crimson-400 hover:shadow-md transition cursor-pointer flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between text-[11px] mb-2">
-                <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">37년 전 오늘 (1989.08.28)</span>
-                <span class="text-slate-400">제984호 1면 톱</span>
-              </div>
-              <h4 class="text-sm font-bold text-slate-900 line-clamp-2 hover:text-crimson-800 leading-snug">
-                [1면 톱] "등록금 자율화 후폭풍… 학생총회, 본관 앞 철야 농성 돌입"
-              </h4>
-              <p class="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
-                문교부의 등록금 자율화 조치 이후 첫 2학기 개강을 맞아 총학생회와 단과대학생회 연석회의는 인상분 전액 환원을 요구하며 무기한 농성에 결의하였다...
-              </p>
-            </div>
-            <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 text-[10px]">
-              <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">#등록금투쟁</span>
-              <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">#총학생회</span>
-              <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">#본관앞</span>
-            </div>
-          </div>
-
-          <!-- Article Card 2 -->
-          <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:border-crimson-400 hover:shadow-md transition cursor-pointer flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between text-[11px] mb-2">
-                <span class="bg-blue-100 text-blue-900 font-bold px-2 py-0.5 rounded">50년 전 오늘 (1976.08.28)</span>
-                <span class="text-slate-400">제620호 3면 학술</span>
-              </div>
-              <h4 class="text-sm font-bold text-slate-900 line-clamp-2 hover:text-crimson-800 leading-snug">
-                [학술기획] "民族大學의 理念과 現代 學生運動의 座標"
-              </h4>
-              <p class="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
-                본교 국문과 조지훈 교수의 유고와 학보 기고문을 재조명하며, 유신 체제 하에서 고대 정신이 지향해야 할 학문적 자율성과 민족적 사명을 논한다...
-              </p>
-            </div>
-            <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 text-[10px]">
-              <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">#조지훈</span>
-              <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">#민족고대</span>
-              <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">#학술논설</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Time Comparison Box -->
-        <div class="bg-gradient-to-r from-crimson-50 to-slate-50 border border-crimson-200 rounded-xl p-4 flex items-center justify-between">
-          <div class="flex items-center space-x-3">
-            <i class="fa-solid fa-code-compare text-crimson-800 text-xl"></i>
-            <div>
-              <div class="text-xs font-bold text-crimson-900">[시대 간 아젠다 교차비교] 등록금 인상 논쟁의 40년 궤적</div>
-              <div class="text-[11px] text-slate-600">1989년 자율화 반대 투쟁 ↔ 2024년 등심위 기사 연결 비교 뷰어 열람</div>
-            </div>
-          </div>
-          <button class="bg-crimson-800 hover:bg-crimson-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shrink-0">
-            비교 뷰어 보기
-          </button>
-        </div>
-      </div>
-
-      <!-- Right 1 Col: 실시간 네트워크 인기 엔터티 & 미니 그래프 프리뷰 -->
-      <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between" id="network">
-        <div>
-          <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-            <h3 class="text-sm font-bold text-slate-900 flex items-center space-x-1.5">
-              <i class="fa-solid fa-diagram-project text-crimson-800 mr-1"></i>
-              <span>지식 네트워크 연결도 TOP 5</span>
+        <!-- Interactive Campus Mini-Map -->
+        <div class="p-4 flex-1 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-bold text-slate-900 flex items-center">
+              <i class="fa-solid fa-map-location-dot text-emerald-600 mr-1.5"></i>
+              <span>캠퍼스 공간 미니맵 연동</span>
             </h3>
-            <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded">엔터티 랭킹</span>
+            <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">안암캠퍼스</span>
+          </div>
+          <p class="text-[11px] text-slate-500 mb-2.5">거점 클릭 시 연결된 사건·기사 노드로 즉시 포커스합니다.</p>
+
+          <!-- Schematic Map Box -->
+          <div class="relative bg-slate-800 rounded-xl border border-slate-700 p-3 text-white overflow-hidden shadow-inner h-52 flex flex-col justify-between">
+            <svg class="absolute inset-0 w-full h-full opacity-30 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+              <line x1="0" y1="110" x2="300" y2="110" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4"/>
+              <line x1="140" y1="0" x2="140" y2="220" stroke="#94a3b8" stroke-width="3"/>
+            </svg>
+
+            <!-- Pins -->
+            <button onclick="focusSpaceNode('space_main')" id="map-btn-main" 
+                    class="map-pin absolute top-3 left-5 bg-crimson-800 hover:bg-crimson-600 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-md border border-crimson-400 flex items-center space-x-1 transition">
+              <span class="w-2 h-2 rounded-full bg-amber-300 animate-ping"></span>
+              <span>🏛️ 본관/중앙광장</span>
+            </button>
+            <button onclick="focusSpaceNode('space_demo')" id="map-btn-demo" 
+                    class="map-pin absolute top-16 left-10 bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-md border border-emerald-400 flex items-center space-x-1 transition">
+              <i class="fa-solid fa-flag text-[9px]"></i>
+              <span>🚩 민주광장</span>
+            </button>
+            <button onclick="focusSpaceNode('space_scilib')" id="map-btn-scilib" 
+                    class="map-pin absolute top-6 right-4 bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-md border border-blue-400 flex items-center space-x-1 transition">
+              <i class="fa-solid fa-atom text-[9px]"></i>
+              <span>🔬 과도/애기능</span>
+            </button>
+            <button onclick="focusSpaceNode('space_green')" id="map-btn-green" 
+                    class="map-pin absolute bottom-10 right-4 bg-teal-700 hover:bg-teal-600 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-md border border-teal-400 flex items-center space-x-1 transition">
+              <i class="fa-solid fa-trophy text-[9px]"></i>
+              <span>🌲 녹지운동장</span>
+            </button>
+            <button onclick="focusSpaceNode('space_chamsari')" id="map-btn-chamsari" 
+                    class="map-pin absolute bottom-3 left-5 bg-amber-700 hover:bg-amber-600 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-md border border-amber-400 flex items-center space-x-1 transition">
+              <i class="fa-solid fa-utensils text-[9px]"></i>
+              <span>🍻 참살이길</span>
+            </button>
+
+            <div class="relative z-10 flex justify-between items-center text-[9px] text-slate-300 mt-auto bg-slate-900/80 px-2 py-1 rounded">
+              <span>공간 노드 5개 활성</span>
+              <span class="text-amber-300">클릭 시 줌인</span>
+            </div>
           </div>
 
-          <!-- Rank List -->
-          <ul class="space-y-2.5 text-xs">
-            <li class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
-              <div class="flex items-center space-x-2">
-                <span class="w-5 h-5 rounded-full bg-crimson-800 text-white text-[10px] font-bold flex items-center justify-center">1</span>
-                <span class="font-bold text-slate-800">4·18 구국대장정</span>
-                <span class="text-[10px] text-slate-400">[사건]</span>
-              </div>
-              <span class="text-[10px] font-semibold text-crimson-700">연결 기사 580건</span>
-            </li>
-            <li class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
-              <div class="flex items-center space-x-2">
-                <span class="w-5 h-5 rounded-full bg-slate-300 text-slate-700 text-[10px] font-bold flex items-center justify-center">2</span>
-                <span class="font-bold text-slate-800">민주광장</span>
-                <span class="text-[10px] text-slate-400">[공간]</span>
-              </div>
-              <span class="text-[10px] font-semibold text-crimson-700">연결 기사 1,420건</span>
-            </li>
-            <li class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
-              <div class="flex items-center space-x-2">
-                <span class="w-5 h-5 rounded-full bg-slate-300 text-slate-700 text-[10px] font-bold flex items-center justify-center">3</span>
-                <span class="font-bold text-slate-800">김준엽 총장</span>
-                <span class="text-[10px] text-slate-400">[인물]</span>
-              </div>
-              <span class="text-[10px] font-semibold text-crimson-700">연결 기사 295건</span>
-            </li>
-            <li class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
-              <div class="flex items-center space-x-2">
-                <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center">4</span>
-                <span class="font-bold text-slate-800">정기고연전 축구</span>
-                <span class="text-[10px] text-slate-400">[문화]</span>
-              </div>
-              <span class="text-[10px] font-semibold text-crimson-700">연결 기사 430건</span>
-            </li>
-            <li class="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-crimson-50 cursor-pointer transition">
-              <div class="flex items-center space-x-2">
-                <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center">5</span>
-                <span class="font-bold text-slate-800">새내기배움터 자료집</span>
-                <span class="text-[10px] text-slate-400">[기록]</span>
-              </div>
-              <span class="text-[10px] font-semibold text-crimson-700">연결 기사 180건</span>
-            </li>
-          </ul>
+          <!-- Preset Themes -->
+          <div class="mt-3 pt-3 border-t border-slate-100">
+            <span class="text-[10px] font-bold text-slate-400 block mb-1.5">핵심 역사 사건 시나리오:</span>
+            <div class="flex flex-wrap gap-1">
+              <button onclick="loadScenario('tuition')" class="px-2 py-1 bg-slate-100 hover:bg-crimson-50 hover:text-crimson-800 text-[10px] font-bold rounded text-slate-600 transition">
+                #1989 등록금투쟁
+              </button>
+              <button onclick="loadScenario('418')" class="px-2 py-1 bg-slate-100 hover:bg-crimson-50 hover:text-crimson-800 text-[10px] font-bold rounded text-slate-600 transition">
+                #4·18 구국대장정
+              </button>
+              <button onclick="loadScenario('koyon')" class="px-2 py-1 bg-slate-100 hover:bg-crimson-50 hover:text-crimson-800 text-[10px] font-bold rounded text-slate-600 transition">
+                #정기고연전 계보
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- [Center Canvas]: Interactive Vis.js Graph -->
+      <main class="flex-1 relative bg-[#f8fafc] flex flex-col">
+        <!-- Floating Canvas Controls -->
+        <div class="absolute top-4 left-4 z-10 flex items-center space-x-2 bg-white/90 backdrop-blur-md px-3 py-2 rounded-xl shadow-md border border-slate-200 text-xs">
+          <span class="font-bold text-slate-700 flex items-center">
+            <i class="fa-solid fa-circle-nodes text-crimson-800 mr-1.5"></i>
+            <span id="activeGraphStatus">전체 지식망 (24개 노드 · 38개 관계 엣지)</span>
+          </span>
+          <span class="text-slate-300">|</span>
+          <button onclick="network.fit({animation: true})" class="p-1 text-slate-600 hover:text-crimson-800" title="화면 맞춤"><i class="fa-solid fa-expand"></i></button>
+          <button onclick="zoomIn()" class="p-1 text-slate-600 hover:text-crimson-800" title="확대"><i class="fa-solid fa-plus"></i></button>
+          <button onclick="zoomOut()" class="p-1 text-slate-600 hover:text-crimson-800" title="축소"><i class="fa-solid fa-minus"></i></button>
         </div>
 
-        <div class="mt-4 pt-3 border-t border-slate-100">
-          <button class="w-full bg-slate-900 hover:bg-crimson-800 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center space-x-2 transition">
+        <!-- Legend Overlay -->
+        <div class="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur-md p-2.5 rounded-xl shadow-md border border-slate-200 text-[10px] space-y-1">
+          <div class="font-bold text-slate-700 mb-1">온톨로지 관계어 범례</div>
+          <div class="flex items-center space-x-2 text-slate-600"><span class="w-3 h-0.5 bg-red-400"></span><span>covers / mentions (보도·언급)</span></div>
+          <div class="flex items-center space-x-2 text-slate-600"><span class="w-3 h-0.5 bg-amber-500"></span><span>participatedIn (주도·참여)</span></div>
+          <div class="flex items-center space-x-2 text-slate-600"><span class="w-3 h-0.5 bg-emerald-500"></span><span>occurredAt (공간 거점)</span></div>
+          <div class="flex items-center space-x-2 text-slate-600"><span class="w-3 h-0.5 bg-purple-400 stroke-dash"></span><span>temporallyComparesWith (시대비교)</span></div>
+        </div>
+
+        <div id="network-canvas" class="flex-1 cursor-grab active:cursor-grabbing"></div>
+      </main>
+
+      <!-- [Right Sidebar]: Selected Node Detail Drawer (Width: 380px) -->
+      <aside id="detailDrawer" class="w-96 bg-white border-l border-slate-200 flex flex-col z-20 shrink-0 shadow-lg overflow-y-auto scrollbar-custom transition-all duration-300">
+        <!-- Header -->
+        <div class="p-5 bg-gradient-to-r from-crimson-900 to-crimson-800 text-white flex justify-between items-start shrink-0">
+          <div>
+            <span id="drawerBadge" class="text-[10px] bg-amber-400 text-slate-900 font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider">사건 (Event)</span>
+            <h2 id="drawerTitle" class="text-lg font-black mt-1.5 tracking-tight text-white leading-snug">1989년 등록금 자율화 반대 투쟁</h2>
+            <p id="drawerSub" class="text-xs text-crimson-200 mt-0.5">발생 시기: 1989년 2학기 · 공간: 본관 앞 및 민주광장</p>
+          </div>
+        </div>
+
+        <div class="p-5 space-y-5 flex-1 text-xs">
+          <!-- Description -->
+          <div>
+            <h4 class="font-bold text-slate-900 mb-1.5 flex items-center text-xs">
+              <i class="fa-solid fa-align-left text-crimson-800 mr-1.5"></i>
+              <span>개체 개요 및 역사적 맥락</span>
+            </h4>
+            <p id="drawerDesc" class="text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200">
+              1989년 문교부의 대학 등록금 자율화 조치에 맞서 총학생회와 단과대학생회가 인상분 환원 및 재정 투명성을 요구하며 본관 철야 농성을 전개한 사건.
+            </p>
+          </div>
+
+          <!-- Neighbors -->
+          <div>
+            <h4 class="font-bold text-slate-900 mb-2 flex items-center justify-between text-xs">
+              <span><i class="fa-solid fa-link text-crimson-800 mr-1.5"></i>직접 연결된 핵심 엔터티</span>
+              <span id="drawerNeighborCount" class="text-[10px] text-slate-400">4개 연결</span>
+            </h4>
+            <div id="drawerNeighbors" class="space-y-1.5"></div>
+          </div>
+
+          <!-- Referenced Articles Linkage -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-bold text-slate-900 flex items-center text-xs">
+                <i class="fa-solid fa-newspaper text-crimson-800 mr-1.5"></i>
+                <span>출처 고대신문 사료 (<span id="drawerArticleCount">2</span>건)</span>
+              </h4>
+              <span class="text-[10px] text-crimson-700 font-bold">듀얼 뷰어 직결</span>
+            </div>
+            <div id="drawerArticles" class="space-y-2.5"></div>
+          </div>
+
+          <!-- Wiki Contribution Box -->
+          <div class="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200/80">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[11px] font-bold text-amber-900 flex items-center"><i class="fa-brands fa-wikipedia-w mr-1"></i>위키 주석 및 관계선 기여</span>
+              <span class="text-[10px] bg-amber-200 text-amber-900 font-bold px-1.5 rounded">HITL 검증</span>
+            </div>
+            <p class="text-[10px] text-amber-800 leading-relaxed">연구자 및 재학생 누구나 본 엔터티에 새로운 관계선 또는 각주를 제안할 수 있습니다.</p>
+            <button onclick="navigateTo('viewer'); setTimeout(()=>toggleAnnotationForm(), 300);" class="mt-2 w-full py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold rounded-lg text-[10px] transition">
+              + 관계어 및 역사적 주석 추가하기
+            </button>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- [VIEW 3]: 지면-텍스트 동기화 기사 상세 듀얼 뷰어 화면                  -->
+    <!-- ======================================================================= -->
+    <div id="view-viewer" class="spa-view hidden flex-1 flex flex-col overflow-hidden">
+      
+      <!-- Top Sub-Header Bar -->
+      <div class="bg-crimson-900 text-white px-5 py-2 flex items-center justify-between z-30 shrink-0 shadow-xs">
+        <div class="flex items-center space-x-3 text-xs text-crimson-200">
+          <button onclick="navigateTo('graph')" class="p-1 rounded bg-white/10 hover:bg-white/20 text-white transition text-xs flex items-center space-x-1">
+            <i class="fa-solid fa-diagram-project"></i>
+            <span>그래프 탐색기로</span>
+          </button>
+          <span class="text-crimson-400">|</span>
+          <span>1989년 8월 28일 (제984호)</span>
+          <i class="fa-solid fa-chevron-right text-[8px] text-crimson-400"></i>
+          <span class="text-white font-bold">1면 톱기사</span>
+        </div>
+
+        <div class="flex items-center space-x-2 text-xs">
+          <!-- Sino-Korean Toggle -->
+          <div class="bg-crimson-950/80 p-0.5 rounded-lg border border-crimson-700 flex items-center space-x-1 text-[11px]">
+            <button id="btnTextModern" onclick="setTextMode('modern')" class="px-2.5 py-1 rounded-md bg-crimson-800 text-white font-bold transition">한글 현대어</button>
+            <button id="btnTextOriginal" onclick="setTextMode('original')" class="px-2.5 py-1 rounded-md text-crimson-200 hover:text-white transition">國漢文 原文</button>
+          </div>
+          <button onclick="toggleMiniGraphModal()" class="bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold px-3 py-1 rounded-lg transition flex items-center space-x-1.5 shadow-xs">
             <i class="fa-solid fa-circle-nodes"></i>
-            <span>전체 인터랙티브 네트워크 열기</span>
+            <span>기사 관계망</span>
           </button>
         </div>
       </div>
 
-    </section>
+      <!-- Split Dual Workspace (48% / 52%) -->
+      <div class="flex-1 flex overflow-hidden">
+        
+        <!-- [Left]: Original Print Scan Simulator -->
+        <section class="w-[48%] bg-slate-200 border-r border-slate-300 flex flex-col relative overflow-hidden shrink-0">
+          <!-- Toolbar -->
+          <div class="bg-slate-100/90 px-4 py-1.5 border-b border-slate-300 flex items-center justify-between text-xs shrink-0">
+            <span class="font-bold text-slate-800 flex items-center text-[11px]">
+              <i class="fa-regular fa-file-pdf text-crimson-800 mr-1.5"></i>
+              <span>제984호 1면 (1989.08.28) 원본 지면</span>
+            </span>
+            <div class="flex items-center space-x-1 bg-white border border-slate-300 rounded-lg p-0.5 text-[10px]">
+              <button onclick="zoomScan(1.1)" class="p-1 hover:bg-slate-100 text-slate-700 rounded"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+              <button onclick="zoomScan(0.9)" class="p-1 hover:bg-slate-100 text-slate-700 rounded"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+              <button onclick="resetScanZoom()" class="p-1 hover:bg-slate-100 text-slate-700 rounded font-bold">100%</button>
+              <span class="text-slate-300">|</span>
+              <button id="btnToggleBBox" onclick="toggleBBox()" class="px-1.5 py-0.5 bg-crimson-50 text-crimson-800 font-bold rounded">BBox ON</button>
+            </div>
+          </div>
 
-  </main>
+          <!-- Newspaper Scan Viewport -->
+          <div id="scanViewport" class="flex-1 overflow-auto scrollbar-custom p-5 flex items-start justify-center">
+            <div id="newspaperSheet" class="newspaper-paper w-[530px] min-h-[740px] p-6 border-2 border-slate-400 rounded-xs shadow-2xl relative transition-transform duration-200 origin-top text-slate-900 select-none">
+              <!-- Masthead -->
+              <div class="border-b-2 border-black pb-2 mb-3">
+                <div class="flex justify-between items-end">
+                  <div class="text-[9px] font-bold text-slate-700">1989年 8月 28日 (月曜日)</div>
+                  <div class="text-center">
+                    <h1 class="text-3xl font-black tracking-widest text-slate-950 font-serif border-y-2 border-black py-0.5 px-4 inline-block">高大新聞</h1>
+                    <div class="text-[8.5px] tracking-tight text-slate-600 font-mono mt-0.5">THE KOREA UNIVERSITY NEWSPAPER · 第984號</div>
+                  </div>
+                  <div class="text-[9px] font-bold text-slate-700 text-right">第 1 面 (綜合)</div>
+                </div>
+              </div>
 
-  <!-- Footer -->
-  <footer class="bg-slate-900 text-slate-400 text-xs py-10 px-6 border-t border-slate-800 mt-16">
-    <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-      <div>
-        <div class="flex items-center space-x-2 text-white font-bold text-sm mb-2">
-          <span class="text-crimson-500">고대신문 디지털 지식 아카이브</span>
-          <span class="text-slate-500">|</span>
-          <span class="text-xs text-slate-300 font-normal">Korea University Newspaper Digital Archive</span>
-        </div>
-        <p class="text-slate-500 text-[11px] leading-relaxed">
-          This research was supported by Humanities Utmost Sharing System (HUSS) through the National Research Foundation of Korea (NRF) funded by the Ministry of Education.<br>
-          본 플랫폼은 교육부 및 한국연구재단 인문사회 디지털 융합인재양성사업단(DHUSS)의 지원으로 구축되었습니다.
-        </p>
-      </div>
-      <div class="text-right text-[11px] text-slate-500 shrink-0">
-        <p>© 2026 Korea University Newspaper & DHUSS. All Rights Reserved.</p>
-        <p class="mt-1 text-slate-600">Vision AI: PaddleOCR-VL-1.6 & Multi-LLM Semantic Engine</p>
+              <!-- Layout Grid -->
+              <div class="grid grid-cols-12 gap-3 relative">
+                <!-- Top Article (Highlighted) -->
+                <div id="bbox-top-article" class="col-span-8 bbox-highlight p-3 rounded cursor-pointer relative">
+                  <div class="absolute -top-2.5 -left-2 bg-crimson-800 text-white text-[9px] font-bold px-1.5 py-0.2 rounded shadow">현재 열람 기사 (1면 톱)</div>
+                  <div class="text-[9.5px] font-bold text-slate-700 mb-1 border-b border-slate-400 pb-0.5">文敎部 授業料 自律化 措置 後暴風… 學生總會 召集</div>
+                  <h2 class="text-base font-black text-slate-950 vintage-title leading-tight mb-2">"授業料 引上 全額 還元하라"<br>總學生會, 本館 前 徹夜 籠城 突入</h2>
+                  <div class="grid grid-cols-2 gap-2 text-[8px] leading-relaxed text-slate-800 font-serif text-justify">
+                    <p>【本報】 1989學年度 第2學期 開講과 함께 本校 總學生會와 各 單科大學生會 連席會議는 文敎部의 授業料 자율화 조치에 따른 등록금 일방 인상에 강력 반발, 28일 오후 2시 민주광장에서 비상 학생총회를 개최하고...</p>
+                    <p>이날 집결한 3천여 학우들은 "대학 재정의 불투명성을 해소하고 문교부의 일방적 국고지원 축소 방침을 철회하라"며 총장실 면담을 요구, 본관 진입을 시도하여...</p>
+                  </div>
+                </div>
+
+                <!-- Editorial -->
+                <div class="col-span-4 bbox-normal p-2 rounded cursor-pointer relative">
+                  <span class="text-[8px] bg-slate-200 px-1 py-0.2 rounded font-bold text-slate-700">社說</span>
+                  <h3 class="text-[11px] font-bold text-slate-900 mt-1 mb-1 font-serif leading-snug">大學 自律化의 正道와 財政 公開의 當爲</h3>
+                  <p class="text-[7.5px] text-slate-600 leading-tight font-serif text-justify">등록금 문제를 둘러싼 학내 갈등은 단순한 액수의 차이를 넘어 대학 운영의 민주성에 대한 근본적 물음이다...</p>
+                </div>
+
+                <!-- Photo Report -->
+                <div class="col-span-12 bbox-normal p-2.5 rounded cursor-pointer flex items-center space-x-3 bg-slate-300/40">
+                  <div class="w-24 h-16 bg-slate-400 rounded flex flex-col items-center justify-center text-slate-700 text-[9px] border border-slate-500 shrink-0">
+                    <i class="fa-regular fa-image text-lg mb-0.5"></i>
+                    <span>[보도 사진]</span>
+                  </div>
+                  <div>
+                    <span class="text-[8px] bg-slate-700 text-white px-1 rounded">화보 단신</span>
+                    <h4 class="text-[11px] font-bold text-slate-950 mt-0.5 font-serif">민주광장 메운 3천 호랑이의 외침</h4>
+                    <p class="text-[8px] text-slate-700 mt-0.5 leading-relaxed font-serif">비상총회를 마친 학생들이 플래카드를 앞세우고 본관으로 행진하고 있다.</p>
+                  </div>
+                </div>
+
+                <!-- Ad -->
+                <div class="col-span-12 bbox-normal p-1.5 rounded text-center border-t-2 border-black mt-1 bg-slate-100/60">
+                  <span class="text-[7.5px] text-slate-400 block">── 고대출판부 신간 안내 ──</span>
+                  <div class="text-[9.5px] font-bold text-slate-900 font-serif">『韓國 民主主義의 歷史적 軌跡』 / 趙芝薰 著</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- [Right]: Restored OCR Text, Semantic Badges, & Wiki -->
+        <main class="w-[52%] bg-white flex flex-col overflow-y-auto scrollbar-custom">
+          <div class="p-7 max-w-2xl mx-auto space-y-6 flex-1 text-slate-800">
+            <!-- Header -->
+            <div class="border-b border-slate-200 pb-4">
+              <div class="flex items-center justify-between mb-2">
+                <span class="bg-crimson-800 text-white font-extrabold px-2.5 py-0.5 rounded text-xs">1면 톱기사 · 정치·자치</span>
+                <span class="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px] font-bold">PaddleOCR & LLM 복원완료</span>
+              </div>
+              <h1 class="text-xl font-black text-slate-900 tracking-tight leading-snug">"등록금 인상 전액 환원하라"… 총학생회, 본관 앞 철야 농성 돌입</h1>
+              <div class="flex flex-wrap gap-x-3 text-[11px] text-slate-500 mt-3 pt-2 border-t border-slate-100">
+                <span><b>발행:</b> 고대신문 제984호 (1989.08.28)</span>
+                <span><b>취재:</b> 편집국 특별취재반</span>
+              </div>
+            </div>
+
+            <!-- 5-Entity Semantic Badges -->
+            <div class="bg-crimson-50/50 rounded-xl p-3.5 border border-crimson-100">
+              <div class="text-[11px] font-bold text-crimson-900 mb-2">추출된 5대 핵심 엔터티 (클릭 시 지식망 이동):</div>
+              <div class="flex flex-wrap gap-1.5 text-xs">
+                <span onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('evt_tuition'), 200);" class="bg-white hover:bg-amber-50 border border-amber-300 px-2 py-0.8 rounded-lg font-bold cursor-pointer transition shadow-2xs flex items-center space-x-1">
+                  <span class="w-2 h-2 rounded-full bg-amber-500"></span><span>[사건] 1989 등록금투쟁</span>
+                </span>
+                <span onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('org_stu_union'), 200);" class="bg-white hover:bg-purple-50 border border-purple-300 px-2 py-0.8 rounded-lg font-bold cursor-pointer transition shadow-2xs flex items-center space-x-1">
+                  <span class="w-2 h-2 rounded-full bg-purple-500"></span><span>[조직] 총학생회</span>
+                </span>
+                <span onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_main'), 200);" class="bg-white hover:bg-emerald-50 border border-emerald-300 px-2 py-0.8 rounded-lg font-bold cursor-pointer transition shadow-2xs flex items-center space-x-1">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>[공간] 본관 앞</span>
+                </span>
+                <span onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_demo'), 200);" class="bg-white hover:bg-emerald-50 border border-emerald-300 px-2 py-0.8 rounded-lg font-bold cursor-pointer transition shadow-2xs flex items-center space-x-1">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>[공간] 민주광장</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Body Text -->
+            <article id="articleContent" class="text-sm leading-relaxed text-slate-800 space-y-3.5 text-justify"></article>
+
+            <!-- Cross Comparison Banner -->
+            <div class="bg-gradient-to-r from-purple-50 to-crimson-50 border-2 border-purple-200 rounded-xl p-4">
+              <div class="inline-flex items-center space-x-1 bg-purple-100 text-purple-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full mb-1">
+                <i class="fa-solid fa-code-compare"></i><span>35년의 시대 교차 비교 (1989 ↔ 2024)</span>
+              </div>
+              <h4 class="text-xs font-bold text-slate-900">1989년 자율화 반대 투쟁 ↔ 2024년 1월 제1820호 등심위 인상 논쟁</h4>
+              <p class="text-[11px] text-slate-600 mt-1">동일한 등록금 책정 아젠다를 시계열로 교차 열람할 수 있습니다.</p>
+            </div>
+
+            <!-- Wiki Annotations -->
+            <section class="border-t border-slate-200 pt-5 space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold text-slate-900 flex items-center"><i class="fa-brands fa-wikipedia-w mr-1 text-amber-700"></i>학내 집단지성 위키 주석 (2)</h3>
+                <button onclick="toggleAnnotationForm()" class="text-[11px] font-bold text-crimson-800 hover:text-crimson-900">+ 새 주석 추가</button>
+              </div>
+
+              <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1.5">
+                <div class="flex justify-between text-[10px] text-slate-500">
+                  <span class="font-bold text-slate-800">사학과 22학번 연구회원</span>
+                  <span>2026.04.12 검증완료</span>
+                </div>
+                <p class="text-slate-700 leading-relaxed text-[11px]">1989년 문교부의 대학 자율화 조치는 등록금 책정을 대학 자율에 일임하면서 사립대 재정 운영 공시 투쟁으로 전국 확산되었습니다.</p>
+              </div>
+
+              <!-- Collapsible Form -->
+              <div id="annotationForm" class="hidden bg-crimson-50/40 border border-crimson-200 rounded-xl p-3 text-xs space-y-2">
+                <div class="font-bold text-crimson-900 text-[11px]">새로운 역사적 주석 또는 구전 기록 기여</div>
+                <textarea placeholder="기사와 관련된 학내 구전, 인물 후일담 등을 입력하세요..." class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs h-16"></textarea>
+                <div class="flex justify-end space-x-1.5">
+                  <button onclick="toggleAnnotationForm()" class="px-2.5 py-1 bg-slate-200 text-slate-700 rounded text-[11px] font-bold">취소</button>
+                  <button onclick="alert('주석이 등록되었습니다.'); toggleAnnotationForm();" class="px-3 py-1 bg-crimson-800 text-white rounded text-[11px] font-bold">등록</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+
       </div>
     </div>
-  </footer>
 
-  <!-- JavaScript for Tab Interactions -->
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MINI EGO GRAPH MODAL (Available Globally)                                 -->
+  <!-- ========================================================================= -->
+  <div id="graphModal" class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xl w-full p-5 shadow-2xl border border-slate-200 flex flex-col space-y-3">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+        <h3 class="text-sm font-bold text-slate-900 flex items-center"><i class="fa-solid fa-diagram-project text-crimson-800 mr-1.5"></i>기사 연계 서브그래프 (1-Hop)</h3>
+        <button onclick="toggleMiniGraphModal()" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="mini-graph-canvas" class="w-full h-72 bg-slate-50 rounded-xl border border-slate-200"></div>
+      <div class="flex justify-between items-center text-[11px]">
+        <span class="text-slate-500">노드 클릭 시 전체 네트워크로 전환</span>
+        <button onclick="toggleMiniGraphModal(); navigateTo('graph');" class="px-3 py-1.5 bg-crimson-800 text-white font-bold rounded-lg">전체 탐색기 열기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- JAVASCRIPT: Unified SPA Engine & Vis.js                                  -->
+  <!-- ========================================================================= -->
   <script>
-    function switchFacet(facetName) {
-      // Hide all panels
-      document.querySelectorAll('.facet-panel').forEach(panel => {
-        panel.classList.add('hidden');
+    // --- 1. SPA View Router ---
+    function navigateTo(viewId) {
+      document.querySelectorAll('.spa-view').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.nav-tab').forEach(btn => {
+        btn.className = 'nav-tab px-3.5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center space-x-1.5';
       });
 
-      // Reset all tab buttons
+      const targetView = document.getElementById('view-' + viewId);
+      const targetBtn = document.getElementById('nav-btn-' + viewId);
+
+      if (targetView) targetView.classList.remove('hidden');
+      if (targetBtn) targetBtn.className = 'nav-tab px-3.5 py-2 rounded-xl bg-crimson-50 text-crimson-800 font-black shadow-xs transition flex items-center space-x-1.5';
+
+      // Lazy load Vis.js on entering graph view
+      if (viewId === 'graph') {
+        setTimeout(() => {
+          if (!network) initNetwork();
+          else network.fit();
+        }, 150);
+      }
+    }
+
+    // --- 2. Facet Switcher ---
+    function switchFacet(facetName) {
+      document.querySelectorAll('.facet-panel').forEach(panel => panel.classList.add('hidden'));
       document.querySelectorAll('.facet-tab').forEach(tab => {
         tab.className = 'facet-tab px-3 py-1.5 rounded-lg text-slate-600 hover:bg-white transition';
       });
 
-      // Show selected panel
       const targetPanel = document.getElementById('panel-' + facetName);
-      if (targetPanel) {
-        targetPanel.classList.remove('hidden');
-      }
+      const targetTab = document.getElementById('tab-' + facetName);
 
-      // Highlight active tab
-      const activeTab = document.getElementById('tab-' + facetName);
-      if (activeTab) {
-        activeTab.className = 'facet-tab px-3 py-1.5 rounded-lg bg-crimson-800 text-white shadow-sm transition';
+      if (targetPanel) targetPanel.classList.remove('hidden');
+      if (targetTab) targetTab.className = 'facet-tab px-3 py-1.5 rounded-lg bg-crimson-800 text-white shadow-xs transition';
+    }
+
+    // --- 3. Graph Data & Engine ---
+    const allNodesData = [
+      { id: 'art_1989', label: '[기사] 1989 등록금철야농성', group: 'article', shape: 'box', color: { background: '#fee2e2', border: '#ef4444' }, font: { color: '#991b1b', size: 11, face: 'Pretendard' } },
+      { id: 'art_1960', label: '[기사] 1960 4·18선언문 전문', group: 'article', shape: 'box', color: { background: '#fee2e2', border: '#ef4444' }, font: { color: '#991b1b', size: 11, face: 'Pretendard' } },
+      { id: 'art_2024', label: '[기사] 2024 등심위 속보', group: 'article', shape: 'box', color: { background: '#fee2e2', border: '#ef4444' }, font: { color: '#991b1b', size: 11, face: 'Pretendard' } },
+      { id: 'art_koyon', label: '[기사] 1976 고연전 5전승', group: 'article', shape: 'box', color: { background: '#fee2e2', border: '#ef4444' }, font: { color: '#991b1b', size: 11, face: 'Pretendard' } },
+      
+      { id: 'evt_tuition', label: '1989 등록금투쟁', group: 'event', shape: 'dot', size: 24, color: { background: '#f59e0b', border: '#b45309' }, font: { color: '#78350f', size: 12, bold: true, face: 'Pretendard' } },
+      { id: 'evt_418', label: '4·18 구국대장정', group: 'event', shape: 'dot', size: 26, color: { background: '#f59e0b', border: '#b45309' }, font: { color: '#78350f', size: 12, bold: true, face: 'Pretendard' } },
+      { id: 'evt_koyon76', label: '1976 정기고연전', group: 'event', shape: 'dot', size: 20, color: { background: '#f59e0b', border: '#b45309' }, font: { color: '#78350f', size: 11, bold: true, face: 'Pretendard' } },
+
+      { id: 'per_kimjunyup', label: '김준엽 (전 총장)', group: 'person', shape: 'dot', size: 18, color: { background: '#3b82f6', border: '#1d4ed8' }, font: { color: '#1e3a8a', size: 11, face: 'Pretendard' } },
+      { id: 'per_chabum', label: '차범근 (체교 72)', group: 'person', shape: 'dot', size: 16, color: { background: '#3b82f6', border: '#1d4ed8' }, font: { color: '#1e3a8a', size: 11, face: 'Pretendard' } },
+      { id: 'per_chojihoon', label: '조지훈 (국문과 교수)', group: 'person', shape: 'dot', size: 18, color: { background: '#3b82f6', border: '#1d4ed8' }, font: { color: '#1e3a8a', size: 11, face: 'Pretendard' } },
+      { id: 'per_stu_pres89', label: '제22대 총학생회장', group: 'person', shape: 'dot', size: 16, color: { background: '#3b82f6', border: '#1d4ed8' }, font: { color: '#1e3a8a', size: 11, face: 'Pretendard' } },
+
+      { id: 'space_main', label: '🏛️ 본관/중앙광장', group: 'space', shape: 'dot', size: 22, color: { background: '#10b981', border: '#047857' }, font: { color: '#064e3b', size: 12, bold: true, face: 'Pretendard' } },
+      { id: 'space_demo', label: '🚩 민주광장', group: 'space', shape: 'dot', size: 22, color: { background: '#10b981', border: '#047857' }, font: { color: '#064e3b', size: 12, bold: true, face: 'Pretendard' } },
+      { id: 'space_scilib', label: '🔬 과도/애기능', group: 'space', shape: 'dot', size: 16, color: { background: '#10b981', border: '#047857' }, font: { color: '#064e3b', size: 11, face: 'Pretendard' } },
+      { id: 'space_green', label: '🌲 녹지운동장', group: 'space', shape: 'dot', size: 16, color: { background: '#10b981', border: '#047857' }, font: { color: '#064e3b', size: 11, face: 'Pretendard' } },
+      { id: 'space_chamsari', label: '🍻 참살이길', group: 'space', shape: 'dot', size: 16, color: { background: '#10b981', border: '#047857' }, font: { color: '#064e3b', size: 11, face: 'Pretendard' } },
+
+      { id: 'org_stu_union', label: '고려대 총학생회', group: 'org', shape: 'dot', size: 22, color: { background: '#a855f7', border: '#7e22ce' }, font: { color: '#581c87', size: 12, bold: true, face: 'Pretendard' } },
+      { id: 'org_newspaper', label: '고대신문사', group: 'org', shape: 'dot', size: 20, color: { background: '#a855f7', border: '#7e22ce' }, font: { color: '#581c87', size: 11, bold: true, face: 'Pretendard' } },
+      { id: 'org_cheer', label: '응원단 (KUBA)', group: 'org', shape: 'dot', size: 16, color: { background: '#a855f7', border: '#7e22ce' }, font: { color: '#581c87', size: 11, face: 'Pretendard' } }
+    ];
+
+    const allEdgesData = [
+      { from: 'art_1989', to: 'evt_tuition', label: 'covers', color: { color: '#ef4444' }, arrows: 'to' },
+      { from: 'art_1960', to: 'evt_418', label: 'covers', color: { color: '#ef4444' }, arrows: 'to' },
+      { from: 'art_koyon', to: 'evt_koyon76', label: 'covers', color: { color: '#ef4444' }, arrows: 'to' },
+      { from: 'art_1989', to: 'art_2024', label: 'temporallyComparesWith', dashes: true, color: { color: '#a855f7' } },
+      { from: 'org_stu_union', to: 'evt_tuition', label: 'hosts', color: { color: '#f59e0b' }, arrows: 'to' },
+      { from: 'per_stu_pres89', to: 'evt_tuition', label: 'leads', color: { color: '#3b82f6' }, arrows: 'to' },
+      { from: 'evt_tuition', to: 'space_main', label: 'occurredAt', color: { color: '#10b981' }, arrows: 'to' },
+      { from: 'evt_tuition', to: 'space_demo', label: 'occurredAt', color: { color: '#10b981' }, arrows: 'to' },
+      { from: 'evt_418', to: 'space_main', label: 'occurredAt', color: { color: '#10b981' }, arrows: 'to' },
+      { from: 'per_chojihoon', to: 'evt_418', label: 'inspired', color: { color: '#3b82f6' }, arrows: 'to' },
+      { from: 'per_chabum', to: 'evt_koyon76', label: 'scored', color: { color: '#3b82f6' }, arrows: 'to' },
+      { from: 'evt_koyon76', to: 'space_green', label: 'occurredAt', color: { color: '#10b981' }, arrows: 'to' }
+    ];
+
+    const nodeDetailsMap = {
+      'evt_tuition': {
+        type: '사건 (Event)',
+        badgeClass: 'bg-amber-400 text-slate-900',
+        title: '1989년 등록금 자율화 반대 투쟁',
+        sub: '시기: 1989년 2학기 · 공간: 본관 앞 / 민주광장',
+        desc: '1989년 문교부의 등록금 자율화 조치에 맞서 총학생회가 인상분 환원과 재정 투명성을 요구하며 전개한 본관 철야 농성.',
+        neighbors: [
+          { name: '고려대학교 총학생회', type: '조직', relation: 'hosts' },
+          { name: '본관/중앙광장', type: '공간', relation: 'occurredAt' },
+          { name: '제22대 총학생회장', type: '인물', relation: 'leads' }
+        ],
+        articles: [{ num: '제984호 1면 톱 (1989.08.28)', title: '"등록금 자율화 후폭풍… 학생총회, 본관 앞 철야 농성 돌입"' }]
+      },
+      'space_main': {
+        type: '공간 (Space)',
+        badgeClass: 'bg-emerald-400 text-slate-900',
+        title: '본관 및 중앙광장',
+        sub: '캠퍼스: 안암 인문계 · 완공: 1934년',
+        desc: '4·18 구국선언문 낭독 및 역대 학생총회 점거 농성의 역사적 거점.',
+        neighbors: [{ name: '1989 등록금투쟁', type: '사건', relation: '농성 거점' }],
+        articles: [{ num: '제984호 1면 (1989.08.28)', title: '"본관 앞 철야 농성 돌입, 등록금 인상 철회 촉구"' }]
+      }
+    };
+
+    let network = null;
+    let nodesDataSet = new vis.DataSet(allNodesData);
+    let edgesDataSet = new vis.DataSet(allEdgesData);
+
+    function initNetwork() {
+      const container = document.getElementById('network-canvas');
+      const data = { nodes: nodesDataSet, edges: edgesDataSet };
+      const options = {
+        nodes: { borderWidth: 2, shadow: true },
+        edges: { width: 1.5, font: { size: 9, align: 'middle', color: '#64748b' }, smooth: { type: 'continuous' } },
+        physics: {
+          solver: 'forceAtlas2Based',
+          forceAtlas2Based: { gravitationalConstant: -45, centralGravity: 0.01, springLength: 90, springConstant: 0.08 }
+        },
+        interaction: { hover: true }
+      };
+      network = new vis.Network(container, data, options);
+      network.on("selectNode", params => {
+        if (params.nodes.length > 0) updateDetailDrawer(params.nodes[0]);
+      });
+      updateDetailDrawer('evt_tuition');
+    }
+
+    function updateDetailDrawer(nodeId) {
+      const details = nodeDetailsMap[nodeId] || {
+        type: '엔터티',
+        badgeClass: 'bg-slate-300 text-slate-800',
+        title: allNodesData.find(n => n.id === nodeId)?.label || nodeId,
+        sub: '고대신문 온톨로지 연계 데이터',
+        desc: '선택된 개체에 대한 지면 기사 추출 정보 및 연관 관계를 분석 중입니다.',
+        neighbors: [],
+        articles: [{ num: '아카이브 색인 기사', title: '해당 개체명이 언급된 고대신문 기사' }]
+      };
+
+      document.getElementById('drawerBadge').textContent = details.type;
+      document.getElementById('drawerBadge').className = `text-[10px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider ${details.badgeClass}`;
+      document.getElementById('drawerTitle').textContent = details.title;
+      document.getElementById('drawerSub').textContent = details.sub;
+      document.getElementById('drawerDesc').textContent = details.desc;
+      document.getElementById('drawerNeighborCount').textContent = `${details.neighbors.length}개 연결`;
+      document.getElementById('drawerArticleCount').textContent = details.articles.length;
+
+      const neighborsContainer = document.getElementById('drawerNeighbors');
+      neighborsContainer.innerHTML = '';
+      details.neighbors.forEach(n => {
+        const div = document.createElement('div');
+        div.className = 'flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 hover:bg-crimson-50 transition cursor-pointer';
+        div.innerHTML = `<span class="font-bold text-slate-800 text-[11px]">[${n.type}] ${n.name}</span><span class="text-[10px] text-crimson-700 font-medium">${n.relation}</span>`;
+        neighborsContainer.appendChild(div);
+      });
+
+      const articlesContainer = document.getElementById('drawerArticles');
+      articlesContainer.innerHTML = '';
+      details.articles.forEach(art => {
+        const div = document.createElement('div');
+        div.className = 'p-2.5 bg-slate-50 hover:bg-crimson-50/60 rounded-xl border border-slate-200 transition cursor-pointer';
+        div.innerHTML = `
+          <div class="text-[10px] font-bold text-crimson-800 mb-0.5">${art.num}</div>
+          <h5 class="font-bold text-slate-900 text-xs">${art.title}</h5>
+          <button onclick="navigateTo('viewer')" class="mt-2 text-crimson-800 font-bold text-[10px] flex items-center space-x-1">
+            <span>기사 듀얼 뷰어 열기 ➔</span>
+          </button>
+        `;
+        articlesContainer.appendChild(div);
+      });
+    }
+
+    function focusSpaceNode(nodeId) {
+      if (!network) return;
+      network.selectNodes([nodeId]);
+      network.focus(nodeId, { scale: 1.3, animation: { duration: 500 } });
+      updateDetailDrawer(nodeId);
+    }
+
+    let activeEntityFilters = { article: true, person: true, event: true, space: true, org: true, culture: true };
+    function toggleEntityType(type) {
+      activeEntityFilters[type] = !activeEntityFilters[type];
+      const filtered = allNodesData.filter(n => activeEntityFilters[n.group]);
+      nodesDataSet.clear();
+      nodesDataSet.add(filtered);
+    }
+
+    function changeEra(val) {
+      const eraMap = ['전체 연대 (1952~2026)', '1960년대 (4·18)', '1970년대 (유신·고연전)', '1989년대 (등록금투쟁)', '2020년대+'];
+      document.getElementById('currentEraLabel').textContent = eraMap[val];
+    }
+
+    function loadScenario(scenario) {
+      if (scenario === 'tuition') { focusSpaceNode('space_main'); updateDetailDrawer('evt_tuition'); }
+      else if (scenario === '418') { focusSpaceNode('space_main'); updateDetailDrawer('evt_418'); }
+      else if (scenario === 'koyon') { focusSpaceNode('space_green'); updateDetailDrawer('evt_koyon76'); }
+    }
+
+    function zoomIn() { network.moveTo({ scale: network.getScale() * 1.2, animation: true }); }
+    function zoomOut() { network.moveTo({ scale: network.getScale() * 0.8, animation: true }); }
+
+    // --- 4. Dual Viewer Text Mode ---
+    const modernText = `
+      <p><b>【본보 종합】</b> 1989학년도 제2학기 개강과 함께 본교 <span class="entity-wiki-link" onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('org_stu_union'), 200);">총학생회</span>와 각 단과대학생회 연석회의는 문교부의 수업료 자율화 조치에 따른 등록금 일방 인상에 강력 반발, 28일 오후 2시 <span class="entity-wiki-link" onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_demo'), 200);">민주광장</span>에서 비상 학생총회를 개최하고 <span class="entity-wiki-link" onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_main'), 200);">본관 앞</span> 무기한 철야 농성에 돌입했다.</p>
+      <p>이날 비상총회에는 개강 첫날임에도 불구하고 3천여 명의 재학생이 운집하였으며, <span class="entity-wiki-link" onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('per_stu_pres89'), 200);">제22대 총학생회장</span>은 기조연설을 통해 "문교부의 국고지원 축소와 일방적 등록금 자율화 정책은 고등교육의 공공성을 포기하는 처사"라 규탄하고 "인상분 전액 환원과 학교 재정 운영의 전면적 공개가 이루어질 때까지 투쟁을 멈추지 않을 것"이라 선언했다.</p>
+      <p>학생들은 총회를 마친 후 "교육재정 확보" 및 "등록금 인상 철회"가 적힌 플래카드를 앞세우고 중앙광장을 거쳐 본관 진입을 시도하였으며, 총장실 면담을 요구하며 본관 로비 및 앞마당에서 철야 농성에 들어갔다.</p>
+    `;
+
+    const originalText = `
+      <p><b>【本報 綜合】</b> 1989學年度 第2學期 開講과 함께 本校 <span class="entity-wiki-link" onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('org_stu_union'), 200);">總學生會</span>와 各 單科大學生會 連席會議는 文敎部의 授業料 自律化 措置에 따른 登錄金 一方的 引上에 强力 叛反, 28日 午後 2時 <span class="entity-wiki-link" onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_demo'), 200);">民主廣場</span>에서 非常 學生總會를 開催하고 <span class="entity-wiki-link" onclick="navigateTo('graph'); setTimeout(()=>focusSpaceNode('space_main'), 200);">本館 前</span> 無期限 徹夜 籠城에 突入했다.</p>
+      <p>이날 非常總會에는 開講 첫날임에도 不拘하고 3千餘 名의 在學生이 雲集하였으며, <span class="entity-wiki-link" onclick="navigateTo('graph'); setTimeout(()=>updateDetailDrawer('per_stu_pres89'), 200);">第22代 總學生會長</span>은 基調演說을 通해 "文敎部의 國庫支援 縮小와 一方的 登錄金 自律化 政策은 高等敎育의 公共性을 抛棄하는 處事"라 糾彈하고 "引上分 全額 還元과 學校 財政 運營의 全面的 公開가 이루어질 때까지 鬪爭을 멈추지 않을 것"이라 宣言했다.</p>
+      <p>學生들은 總會를 마친 後 "敎育財政 確保" 및 "登錄金 引上 撤回"가 적힌 플래카드를 앞세우고 中央廣場을 거쳐 本館 進入을 試圖하였으며, 總長室 面談을 要求하며 本館 로비 및 앞마당에서 徹夜 籠城에 들어갔다.</p>
+    `;
+
+    function setTextMode(mode) {
+      const container = document.getElementById('articleContent');
+      const btnM = document.getElementById('btnTextModern');
+      const btnO = document.getElementById('btnTextOriginal');
+      if (mode === 'modern') {
+        container.innerHTML = modernText;
+        btnM.className = 'px-2.5 py-1 rounded-md bg-crimson-800 text-white font-bold transition';
+        btnO.className = 'px-2.5 py-1 rounded-md text-crimson-200 hover:text-white transition';
+      } else {
+        container.innerHTML = originalText;
+        btnO.className = 'px-2.5 py-1 rounded-md bg-crimson-800 text-white font-bold transition';
+        btnM.className = 'px-2.5 py-1 rounded-md text-crimson-200 hover:text-white transition';
       }
     }
+
+    let currentScanScale = 1.0;
+    function zoomScan(f) {
+      currentScanScale *= f;
+      if (currentScanScale < 0.7) currentScanScale = 0.7;
+      if (currentScanScale > 2.0) currentScanScale = 2.0;
+      document.getElementById('newspaperSheet').style.transform = `scale(${currentScanScale})`;
+    }
+    function resetScanZoom() {
+      currentScanScale = 1.0;
+      document.getElementById('newspaperSheet').style.transform = 'scale(1.0)';
+    }
+
+    let showBBox = true;
+    function toggleBBox() {
+      showBBox = !showBBox;
+      document.querySelectorAll('.bbox-highlight, .bbox-normal').forEach(b => {
+        b.style.borderColor = showBBox ? '' : 'transparent';
+        b.style.backgroundColor = showBBox ? '' : 'transparent';
+      });
+      document.getElementById('btnToggleBBox').textContent = showBBox ? 'BBox ON' : 'BBox OFF';
+    }
+
+    function toggleAnnotationForm() {
+      document.getElementById('annotationForm').classList.toggle('hidden');
+    }
+
+    let miniNetwork = null;
+    function toggleMiniGraphModal() {
+      const modal = document.getElementById('graphModal');
+      modal.classList.toggle('hidden');
+      if (!modal.classList.contains('hidden') && !miniNetwork) {
+        setTimeout(initMiniGraph, 100);
+      }
+    }
+
+    function initMiniGraph() {
+      const container = document.getElementById('mini-graph-canvas');
+      const data = {
+        nodes: new vis.DataSet([
+          { id: 'art', label: '[기사] 1989 등록금농성', shape: 'box', color: { background: '#fee2e2', border: '#ef4444' } },
+          { id: 'evt', label: '1989 등록금투쟁', shape: 'dot', size: 18, color: { background: '#f59e0b', border: '#b45309' } },
+          { id: 'org', label: '총학생회', shape: 'dot', size: 14, color: { background: '#a855f7' } },
+          { id: 'sp', label: '🏛️ 본관 앞', shape: 'dot', size: 14, color: { background: '#10b981' } }
+        ]),
+        edges: new vis.DataSet([
+          { from: 'art', to: 'evt', label: 'covers', color: '#ef4444' },
+          { from: 'org', to: 'evt', label: 'hosts', color: '#a855f7' },
+          { from: 'evt', to: 'sp', label: 'occurredAt', color: '#10b981' }
+        ])
+      };
+      miniNetwork = new vis.Network(container, data, { physics: { stabilization: true } });
+    }
+
+    // Default Init on load
+    window.onload = () => {
+      setTextMode('modern');
+    };
   </script>
 </body>
 </html>
